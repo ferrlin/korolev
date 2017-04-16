@@ -49,6 +49,7 @@ val commonSettings = publishSettings ++ Seq(
     "org.scalatest" %%% "scalatest" % "3.0.1" % "test"
   ),
   scalacOptions ++= Seq(
+    "-unchecked",
     "-deprecation",
     "-feature",
     "-Xfatal-warnings",
@@ -68,6 +69,13 @@ lazy val vdomOsgiSettings = osgiSettings ++ Seq(
 lazy val vdom = crossProject.crossType(CrossType.Pure).
   settings(commonSettings: _*).
   settings(normalizedName := "korolev-vdom").
+  settings(
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "macro-compat" % "1.1.1",
+      "org.scala-lang" % "scala-compiler" % scalaVersion.value % "provided",
+      compilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+    )
+  ).
   enablePlugins(SbtOsgi).settings(vdomOsgiSettings:_*)
 
 lazy val vdomJS = vdom.js

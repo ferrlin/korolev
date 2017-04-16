@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.language.implicitConversions
 
-trait Shtml {
+object Shtml {
 
   import ShtmlMisc._
 
@@ -25,7 +25,7 @@ trait Shtml {
   val <> = VDom.Empty
 }
 
-private[korolev] object ShtmlMisc {
+object ShtmlMisc {
 
   // Should be concurrent
   val nameCache = mutable.Map.empty[Symbol, String]
