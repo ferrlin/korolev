@@ -169,6 +169,13 @@ lazy val simpleExample = (project in examples / "simple").
   settings(mainClass := Some("SimpleExample")).
   dependsOn(`server-blaze`)
 
+lazy val orsaComp = (project in examples / "orsa-comp").
+  enablePlugins(JavaAppPackaging).
+  enablePlugins(UniversalPlugin).
+  settings(exampleSettings: _*).
+  settings(mainClass := Some("SimpleList")).
+  dependsOn(`server-blaze`)
+
 lazy val routingExample = (project in examples / "routing").
   enablePlugins(JavaAppPackaging).
   enablePlugins(UniversalPlugin).
