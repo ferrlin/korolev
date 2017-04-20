@@ -20,24 +20,24 @@ val publishSettings = Seq(
   },
   pomExtra := {
     <url>https://github.com/fomkin/korolev</url>
-    <licenses>
-      <license>
-        <name>Apache License, Version 2.0</name>
-        <url>http://apache.org/licenses/LICENSE-2.0</url>
-        <distribution>repo</distribution>
-      </license>
-    </licenses>
-    <scm>
-      <url>git@github.com:fomkin/korolev.git</url>
-      <connection>scm:git:git@github.com:fomkin/korolev.git</connection>
-    </scm>
-    <developers>
-      <developer>
-        <id>fomkin</id>
-        <name>Aleksey Fomkin</name>
-        <email>aleksey.fomkin@gmail.com</email>
-      </developer>
-    </developers>
+      <licenses>
+        <license>
+          <name>Apache License, Version 2.0</name>
+          <url>http://apache.org/licenses/LICENSE-2.0</url>
+          <distribution>repo</distribution>
+        </license>
+      </licenses>
+      <scm>
+        <url>git@github.com:fomkin/korolev.git</url>
+        <connection>scm:git:git@github.com:fomkin/korolev.git</connection>
+      </scm>
+      <developers>
+        <developer>
+          <id>fomkin</id>
+          <name>Aleksey Fomkin</name>
+          <email>aleksey.fomkin@gmail.com</email>
+        </developer>
+      </developers>
   }
 )
 
@@ -68,7 +68,7 @@ lazy val vdomOsgiSettings = osgiSettings ++ Seq(
 lazy val vdom = crossProject.crossType(CrossType.Pure).
   settings(commonSettings: _*).
   settings(normalizedName := "korolev-vdom").
-  enablePlugins(SbtOsgi).settings(vdomOsgiSettings:_*)
+  enablePlugins(SbtOsgi).settings(vdomOsgiSettings: _*)
 
 lazy val vdomJS = vdom.js
 lazy val vdomJVM = vdom.jvm
@@ -84,7 +84,7 @@ lazy val server = project.
     libraryDependencies += "biz.enef" %% "slogging-slf4j" % "0.5.2"
   ).
   dependsOn(korolevJVM).
-  enablePlugins(SbtOsgi).settings(serverOsgiSettings:_*)
+  enablePlugins(SbtOsgi).settings(serverOsgiSettings: _*)
 
 lazy val serverBlazeOsgiSettings = osgiSettings ++ Seq(
   OsgiKeys.exportPackage := Seq("korolev.blazeServer.*;version=${Bundle-Version}")
@@ -97,7 +97,7 @@ lazy val `server-blaze` = project.
     libraryDependencies ++= Seq("org.http4s" %% "blaze-http" % "0.12.4")
   ).
   dependsOn(server).
-  enablePlugins(SbtOsgi).settings(serverBlazeOsgiSettings:_*)
+  enablePlugins(SbtOsgi).settings(serverBlazeOsgiSettings: _*)
 
 lazy val asyncOsgiSettings = osgiSettings ++ Seq(
   OsgiKeys.exportPackage := Seq("korolev.*;version=${Bundle-Version}")
@@ -106,7 +106,7 @@ lazy val asyncOsgiSettings = osgiSettings ++ Seq(
 lazy val async = crossProject.crossType(CrossType.Pure).
   settings(commonSettings: _*).
   settings(normalizedName := "korolev-async").
-  enablePlugins(SbtOsgi).settings(asyncOsgiSettings:_*)
+  enablePlugins(SbtOsgi).settings(asyncOsgiSettings: _*)
 
 lazy val asyncJS = async.js
 lazy val asyncJVM = async.jvm
@@ -126,7 +126,7 @@ lazy val bridge = crossProject.crossType(CrossType.Pure).
     unmanagedResourceDirectories in Compile += file("bridge") / "src" / "main" / "resources"
   ).
   dependsOn(async).
-  enablePlugins(SbtOsgi).settings(bridgeOsgiSettings:_*)
+  enablePlugins(SbtOsgi).settings(bridgeOsgiSettings: _*)
 
 lazy val bridgeJS = bridge.js
 lazy val bridgeJVM = bridge.jvm
@@ -143,7 +143,7 @@ lazy val korolev = crossProject.crossType(CrossType.Full).
     unmanagedResourceDirectories in Compile += file("korolev") / "shared" / "src" / "main" / "resources"
   ).
   dependsOn(vdom, bridge).
-  enablePlugins(SbtOsgi).settings(korolevOsgiSettings:_*)
+  enablePlugins(SbtOsgi).settings(korolevOsgiSettings: _*)
 
 lazy val korolevJS = korolev.js
 lazy val korolevJVM = korolev.jvm
@@ -167,6 +167,13 @@ lazy val simpleExample = (project in examples / "simple").
   enablePlugins(UniversalPlugin).
   settings(exampleSettings: _*).
   settings(mainClass := Some("SimpleExample")).
+  dependsOn(`server-blaze`)
+
+lazy val collMenuExample = (project in examples / "collMenuExample").
+  enablePlugins(JavaAppPackaging).
+  enablePlugins(UniversalPlugin).
+  settings(exampleSettings: _*).
+  settings(mainClass := Some("CollapsibleMenu")).
   dependsOn(`server-blaze`)
 
 lazy val orsaComp = (project in examples / "orsa-comp").
@@ -216,7 +223,7 @@ lazy val delayExample = (project in examples / "delay").
 
 lazy val `integration-tests` = project.
   settings(commonSettings).
-  settings(dontPublishSettings:_*).
+  settings(dontPublishSettings: _*).
   settings(
     fork in run := true,
     libraryDependencies ++= Seq(
@@ -228,7 +235,7 @@ lazy val `integration-tests` = project.
 
 lazy val `performance-benchmark` = project.
   settings(commonSettings).
-  settings(dontPublishSettings:_*).
+  settings(dontPublishSettings: _*).
   settings(
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
     fork in run := true,
@@ -239,7 +246,7 @@ lazy val `performance-benchmark` = project.
   )
 
 lazy val root = project.in(file(".")).
-  settings(dontPublishSettings:_*).
+  settings(dontPublishSettings: _*).
   aggregate(
     korolevJS, korolevJVM,
     bridgeJS, bridgeJVM,
