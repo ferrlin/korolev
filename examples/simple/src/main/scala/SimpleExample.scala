@@ -37,6 +37,7 @@ object SimpleExample extends KorolevBlazeServer {
                       }
                     }
                   ),
+
                   if (!todo.done) 'span (todo.text)
                   else 'strike (todo.text)
                 )
