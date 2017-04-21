@@ -29,14 +29,13 @@ object TreeView extends KorolevBlazeServer {
   private def getStyleClass(isSelected: Boolean): VDom.Node =
     'span ('class /= (if (isSelected) TREE_STYLE_MINUS else TREE_STYLE_PLUS))
 
-  private def createCheckbox(isChecked: Boolean, selected: String): VDom.Node = {
-    'span ('class /= (if (isChecked) STYLE_CHECKED else STYLE_UNCHECKED),
+  private def createCheckbox(isChecked: Boolean, items: Map[String, Tuple2[Boolean, State.Tree]], item: String): VDom.Node = {
+    'span ('class /= (if (items(item)._2.checked) STYLE_CHECKED else STYLE_UNCHECKED),
       event('click) {
         immediateTransition { case s =>
-          println(s"ISCHECKED ::: $isChecked")
-          val (opened, ref) = s.items(selected)
-          val updatedTree = ref.copy(checked = !isChecked)
-          s.copy(items = s.items + (selected -> (opened, updatedTree)))
+          val (opened, ref) = s.items(item)
+          val updatedTree = ref.copy(checked = !ref.checked)
+          s.copy(items = s.items + (item -> (opened, updatedTree)))
         }
       }
     )
@@ -104,17 +103,7 @@ object TreeView extends KorolevBlazeServer {
               state.items.keys map { item =>
                 'li ('class /= "list-group-item",
                   getStyleClass(item == state.selected && state.items(item)._1),
-                  'span ('class /= (if (item == state.selected && state.items(state.selected)._2.checked) STYLE_CHECKED else STYLE_UNCHECKED),
-                    event('click) {
-                      immediateTransition { case s =>
-                        println(s"FALSE or TRUE ????${(state.items(s.selected)._2.checked)} ::: selected ${s.selected}")
-                        val (opened, ref) = s.items(item)
-                        val updatedTree = ref.copy(checked = !ref.checked)
-                        println(s"Updated tree ::: ${updatedTree}")
-                        s.copy(items = s.items + (item -> (opened, updatedTree)))
-                      }
-                    }
-                  ),
+                  createCheckbox(state.items(item)._2.checked, state.items, item),
                   'span (
                     event('click) {
                       immediateTransition { case s =>
