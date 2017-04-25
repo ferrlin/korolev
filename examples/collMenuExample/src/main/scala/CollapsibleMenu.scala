@@ -91,6 +91,7 @@ object CollapsibleMenu extends KorolevBlazeServer {
                         val other = s.items.filter(_._1 != item).map(p => (p._1, p._2.copy(_1 = false)))
                         val updatedItems = (s.items ++ other) + (item -> (!isOpened, els))
 
+                        println(s"UPDATED::: $updatedItems with other ${other.size}:::$other")
                         s.copy(selected = item, items = updatedItems, els = generateLI(updatedItems(item)._2))
                       }
                     },

@@ -34,11 +34,29 @@ object TreeView extends KorolevBlazeServer {
       event('click) {
         immediateTransition { case s =>
           val (opened, ref) = s.items(item)
-          val updatedTree = ref.copy(checked = !ref.checked)
-          s.copy(items = s.items + (item -> (opened, updatedTree)))
+          val updatedStatus = !ref.checked
+          val updatedChildren = ref.items.map {
+            case l: State.Leaf => l.copy(checked = updatedStatus)
+            case t: State.Tree => t.copy(checked = updatedStatus)
+          }
+          val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
+          s.copy(items = s.items + (item -> (opened, updatedTree)), els = generateLI(updatedTree.items))
         }
       }
     )
+  }
+
+  /**
+    * Checkboxes used in children elements
+    *
+    * @param item
+    * @return
+    */
+  private def createCheckbox(item: State.Item): VDom.Node = item match {
+    case l: State.Leaf =>
+      'span ('class /= (if (l.checked) STYLE_CHECKED else STYLE_UNCHECKED))
+    case t: State.Tree =>
+      'span ('class /= (if (t.checked) STYLE_CHECKED else STYLE_UNCHECKED))
   }
 
 
@@ -62,24 +80,9 @@ object TreeView extends KorolevBlazeServer {
     */
   private def generateLI(items: Vector[State.Item]): Vector[VDom.Node] = items map {
     case (item: State.Leaf) => 'li ('class /= "list-group-item",
-      'div (
-        'class /= {
-          if (!item.checked) "checkbox" else "checkbox checkbox_checked"
-        }
-      ), item.text)
+      createCheckbox(item), item.text)
     case (item: State.Tree) => 'li ('class /= "list-group-item",
-      'div (
-        'class /= {
-          if (!item.checked) "checkbox" else "checkbox checkbox_checked"
-        }
-      ),
-      event('click) {
-        immediateTransition { case s =>
-
-          s
-        }
-      },
-      item.text
+      createCheckbox(item), item.text
     )
   }
 
