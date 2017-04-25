@@ -40,7 +40,8 @@ object TreeView extends KorolevBlazeServer {
             case t: State.Tree => t.copy(checked = updatedStatus)
           }
           val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
-          s.copy(items = s.items + (item -> (opened, updatedTree)), els = generateLI(updatedTree.items))
+          val updatedEl = s.els + (item -> generateLI(updatedTree.items))
+          s.copy(items = s.items + (item -> (opened, updatedTree)), els = updatedEl)
         }
       }
     )
@@ -71,7 +72,7 @@ object TreeView extends KorolevBlazeServer {
   }
 
   private def getChildrenEls(isSelected: Boolean)(els: Vector[VDom.Node]): Vector[VDom.Node] =
-    if (isSelected) (els) else Vector('br ())
+    if (isSelected) els else Vector('br ())
 
   /**
     *
@@ -116,12 +117,15 @@ object TreeView extends KorolevBlazeServer {
                         val other = s.items.filter(_._1 != item).map(p => (p._1, p._2.copy(_1 = false)))
                         val updatedItems = (s.items ++ other) + (item -> (!isOpened, els))
 
-                        s.copy(selected = item, items = updatedItems, els = generateLI(updatedItems(item)._2.items))
+                        val updatedEl = s.els + (item -> generateLI(updatedItems(item)._2.items))
+                        s.copy(selected = item, items = updatedItems, els = updatedEl)
                       }
                     },
                     getStyleFor(item, item == state.selected)
-                  ),
-                  getChildrenEls(item == state.selected && state.items(item)._1)(state.els)
+                  ),{
+                val pass = if (state.els.contains(state.selected)) state.els(item) else Vector()
+                getChildrenEls(item == state.selected && state.items(item)._1)(pass)
+                  }
                 )
               }
             )
@@ -165,7 +169,7 @@ case class State(selected: String = State.default.text,
                    State.default.text -> (false, State.default),
                    State.second.text -> (false, State.second),
                    State.third.text -> (false, State.third)),
-                 els: Vector[VDom.Node] = Vector())
+                 els: Map[String, Vector[VDom.Node]] = Map())
 
 object State {
   val effects = Effects[Future, State, Any]
