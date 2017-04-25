@@ -40,7 +40,7 @@ object TreeView extends KorolevBlazeServer {
             case t: State.Tree => t.copy(checked = updatedStatus)
           }
           val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
-          val updatedEl = s.els + (item -> generateLI(updatedTree.items))
+          val updatedEl = s.els + (item -> generateLI(updatedTree.items, ref.text))
           s.copy(items = s.items + (item -> (opened, updatedTree)), els = updatedEl)
         }
       }
@@ -53,11 +53,30 @@ object TreeView extends KorolevBlazeServer {
     * @param item
     * @return
     */
-  private def createCheckbox(item: State.Item): VDom.Node = item match {
-    case l: State.Leaf =>
-      'span ('class /= (if (l.checked) STYLE_CHECKED else STYLE_UNCHECKED))
-    case t: State.Tree =>
-      'span ('class /= (if (t.checked) STYLE_CHECKED else STYLE_UNCHECKED))
+  private def createCheckbox(item: State.Item, parent: String): VDom.Node = {
+    val (isChecked, name) = item match {
+      case l: State.Leaf => (l.checked, l.text)
+      case t: State.Tree => (t.checked, t.text)
+    }
+    'span ('class /= (if (isChecked) STYLE_CHECKED else STYLE_UNCHECKED),
+      event('click) {
+        immediateTransition { case s =>
+          val (opened, parentRef) = s.items(parent)
+
+          val updated: Vector[State.Item] = parentRef.items.map {
+            case l: State.Leaf if (l.text == name) =>
+              l.copy(checked = !isChecked)
+            case t: State.Tree if (t.text == name) =>
+              t.copy(checked = !isChecked)
+            case i: State.Item => i
+          }
+
+          val updatedRef = parentRef.copy(items = updated)
+          val updatedEl = s.els + (parent -> generateLI(updatedRef.items, parent))
+          s.copy(items = s.items + (parent -> (opened, updatedRef)), els = updatedEl)
+        }
+      }
+    )
   }
 
 
@@ -79,11 +98,11 @@ object TreeView extends KorolevBlazeServer {
     * @param items
     * @return
     */
-  private def generateLI(items: Vector[State.Item]): Vector[VDom.Node] = items map {
+  private def generateLI(items: Vector[State.Item], ref: String): Vector[VDom.Node] = items map {
     case (item: State.Leaf) => 'li ('class /= "list-group-item",
-      createCheckbox(item), item.text)
+      createCheckbox(item, ref), item.text)
     case (item: State.Tree) => 'li ('class /= "list-group-item",
-      createCheckbox(item), item.text
+      createCheckbox(item, ref), item.text
     )
   }
 
@@ -117,13 +136,13 @@ object TreeView extends KorolevBlazeServer {
                         val other = s.items.filter(_._1 != item).map(p => (p._1, p._2.copy(_1 = false)))
                         val updatedItems = (s.items ++ other) + (item -> (!isOpened, els))
 
-                        val updatedEl = s.els + (item -> generateLI(updatedItems(item)._2.items))
+                        val updatedEl = s.els + (item -> generateLI(updatedItems(item)._2.items, item))
                         s.copy(selected = item, items = updatedItems, els = updatedEl)
                       }
                     },
                     getStyleFor(item, item == state.selected)
                   ), {
-                    // check if the  selected item is used a key for els
+                    // check if the  selected item is used as a key for els in State
                     val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector() else state.els(state.selected)
                     getChildrenEls(item == state.selected && state.items(item)._1)(elements)
                   }
