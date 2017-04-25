@@ -72,7 +72,7 @@ object TreeView extends KorolevBlazeServer {
   }
 
   private def getChildrenEls(isSelected: Boolean)(els: Vector[VDom.Node]): Vector[VDom.Node] =
-    if (isSelected) els else Vector('br ())
+    if (isSelected && els.nonEmpty) els else Vector('br ())
 
   /**
     *
@@ -122,9 +122,10 @@ object TreeView extends KorolevBlazeServer {
                       }
                     },
                     getStyleFor(item, item == state.selected)
-                  ),{
-                val pass = if (state.els.contains(state.selected)) state.els(item) else Vector()
-                getChildrenEls(item == state.selected && state.items(item)._1)(pass)
+                  ), {
+                    // check if the  selected item is used a key for els
+                    val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector() else state.els(state.selected)
+                    getChildrenEls(item == state.selected && state.items(item)._1)(elements)
                   }
                 )
               }
