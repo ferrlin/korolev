@@ -29,23 +29,16 @@ object TreeView extends KorolevBlazeServer {
   private def getStyleClass(isSelected: Boolean): VDom.Node =
     'span ('class /= (if (isSelected) TREE_STYLE_MINUS else TREE_STYLE_PLUS))
 
-  private def createCheckbox(isChecked: Boolean, items: Map[String, Tuple2[Boolean, State.Tree]], item: String): VDom.Node = {
+  private def createCheckbox(items: Map[String, Tuple2[Boolean, State.Tree]], item: String)(t: (String) => StateManager.Transition[State]): VDom.Node = {
     'span ('class /= (if (items(item)._2.checked) STYLE_CHECKED else STYLE_UNCHECKED),
       event('click) {
-        immediateTransition { case s =>
-          val (opened, ref) = s.items(item)
-          val updatedStatus = !ref.checked
-          val updatedChildren = ref.items.map {
-            case l: State.Leaf => l.copy(checked = updatedStatus)
-            case t: State.Tree => t.copy(checked = updatedStatus)
-          }
-          val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
-          val updatedEl = s.els + (item -> generateLI(updatedTree.items, ref.text))
-          s.copy(items = s.items + (item -> (opened, updatedTree)), els = updatedEl)
+        immediateTransition {
+          t(item)
         }
       }
     )
   }
+
 
   /**
     * Checkboxes used in children elements
@@ -53,27 +46,15 @@ object TreeView extends KorolevBlazeServer {
     * @param item
     * @return
     */
-  private def createCheckbox(item: State.Item, parent: String): VDom.Node = {
+  private def createCheckbox(item: State.Item, parent: String)(t: (String, Boolean) => StateManager.Transition[State]): VDom.Node = {
     val (isChecked, name) = item match {
       case l: State.Leaf => (l.checked, l.text)
       case t: State.Tree => (t.checked, t.text)
     }
     'span ('class /= (if (isChecked) STYLE_CHECKED else STYLE_UNCHECKED),
       event('click) {
-        immediateTransition { case s =>
-          val (opened, parentRef) = s.items(parent)
-
-          val updated: Vector[State.Item] = parentRef.items.map {
-            case l: State.Leaf if (l.text == name) =>
-              l.copy(checked = !isChecked)
-            case t: State.Tree if (t.text == name) =>
-              t.copy(checked = !isChecked)
-            case i: State.Item => i
-          }
-
-          val updatedRef = parentRef.copy(items = updated)
-          val updatedEl = s.els + (parent -> generateLI(updatedRef.items, parent))
-          s.copy(items = s.items + (parent -> (opened, updatedRef)), els = updatedEl)
+        immediateTransition {
+          t(name, isChecked)
         }
       }
     )
@@ -100,10 +81,54 @@ object TreeView extends KorolevBlazeServer {
     */
   private def generateLI(items: Vector[State.Item], ref: String): Vector[VDom.Node] = items map {
     case (item: State.Leaf) => 'li ('class /= "list-group-item",
-      createCheckbox(item, ref), item.text)
+      createCheckbox(item, ref)(childEvent(ref) _), item.text)
     case (item: State.Tree) => 'li ('class /= "list-group-item",
-      createCheckbox(item, ref), item.text
-    )
+      createCheckbox(item, ref)(childEvent(ref) _), item.text)
+  }
+
+
+  /**
+    * Event used for parent tree when checkbox is clicked
+    *
+    * @param item
+    * @return
+    */
+  def parentEvent(item: String): StateManager.Transition[State] = {
+    case s =>
+      val (opened, ref) = s.items(item)
+      val updatedStatus = !ref.checked
+      val updatedChildren = ref.items.map {
+        case l: State.Leaf => l.copy(checked = updatedStatus)
+        case t: State.Tree => t.copy(checked = updatedStatus)
+      }
+      val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
+      val updatedEl = s.els + (item -> generateLI(updatedTree.items, ref.text))
+      s.copy(items = s.items + (item -> (opened, updatedTree)), els = updatedEl)
+  }
+
+  /**
+    * Event for children (used in dealing with checkbox click
+    *
+    * @param ref
+    * @param name
+    * @param isChecked
+    * @return
+    */
+  def childEvent(ref: String)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
+    case s: State =>
+      val (opened, parentRef) = s.items(ref)
+
+      val updated: Vector[State.Item] = parentRef.items.map {
+        case l: State.Leaf if (l.text == name) =>
+          l.copy(checked = !isChecked)
+        case t: State.Tree if (t.text == name) =>
+          t.copy(checked = !isChecked)
+        case i: State.Item => i
+      }
+
+      val updatedRef = parentRef.copy(items = updated)
+      val updatedEl = s.els + (ref -> generateLI(updatedRef.items, ref))
+      s.copy(items = s.items + (ref -> (opened, updatedRef)), els = updatedEl)
   }
 
   val service = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
@@ -126,7 +151,7 @@ object TreeView extends KorolevBlazeServer {
               state.items.keys map { item =>
                 'li ('class /= "list-group-item",
                   getStyleClass(item == state.selected && state.items(item)._1),
-                  createCheckbox(state.items(item)._2.checked, state.items, item),
+                  createCheckbox(state.items, item)(parentEvent _),
                   'span (
                     event('click) {
                       immediateTransition { case s =>
