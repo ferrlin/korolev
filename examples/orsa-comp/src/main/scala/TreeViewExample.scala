@@ -81,9 +81,11 @@ object TreeView extends KorolevBlazeServer {
     */
   private def generateLI(items: Vector[State.Item], ref: String): Vector[VDom.Node] = items map {
     case (item: State.Leaf) => 'li ('class /= "list-group-item",
-      createCheckbox(item, ref)(childEvent(ref) _), item.text)
-    case (item: State.Tree) => 'li ('class /= "list-group-item",
-      createCheckbox(item, ref)(childEvent(ref) _), item.text)
+      createCheckbox(item, ref)(childCheckboxEvent(ref) _), item.text)
+    case (item: State.Tree) => {
+      'li ('class /= "list-group-item",
+        createCheckbox(item, ref)(childCheckboxEvent(ref) _), item.text, generateLI(item.items, item.text))
+    }
   }
 
 
@@ -93,7 +95,7 @@ object TreeView extends KorolevBlazeServer {
     * @param item
     * @return
     */
-  def parentEvent(item: String): StateManager.Transition[State] = {
+  def parentCheckboxEvent(item: String): StateManager.Transition[State] = {
     case s =>
       val (opened, ref) = s.items(item)
       val updatedStatus = !ref.checked
@@ -114,7 +116,7 @@ object TreeView extends KorolevBlazeServer {
     * @param isChecked
     * @return
     */
-  def childEvent(ref: String)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
+  def childCheckboxEvent(ref: String)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
     case s: State =>
       val (opened, parentRef) = s.items(ref)
 
@@ -130,6 +132,45 @@ object TreeView extends KorolevBlazeServer {
       val updatedEl = s.els + (ref -> generateLI(updatedRef.items, ref))
       s.copy(items = s.items + (ref -> (opened, updatedRef)), els = updatedEl)
   }
+
+  def mainTreeEvent(selected: String): StateManager.Transition[State] = {
+    case s =>
+      val (isOpened, els) = s.items(selected)
+
+      // reset other 'opened' state to false
+      val other = s.items.filter(_._1 != selected).map(p => (p._1, p._2.copy(_1 = false)))
+      val updatedItems = (s.items ++ other) + (selected -> (!isOpened, els))
+
+      val updatedEl = s.els + (selected -> generateLI(updatedItems(selected)._2.items, selected))
+      s.copy(selected = selected, items = updatedItems, els = updatedEl)
+  }
+
+  /**
+    * Creates the tree item with its event handling feature.
+    *
+    * @param item
+    * @param state
+    * @return
+    */
+  def createTree(item: String)(state: State): VDom.Node = 'li ('class /= "list-group-item",
+    getStyleClass(item == state.selected && state.items(item)._1),
+    createCheckbox(state.items, item)(parentCheckboxEvent _),
+    'span (
+      event('click) {
+        immediateTransition {
+          //if main tree
+          mainTreeEvent(item)
+          // else
+          // nestedTreeEvent(item)
+        }
+      },
+      getStyleFor(item, item == state.selected)
+    ), {
+      // check if the  selected item is used as a key for els in State
+      val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector() else state.els(state.selected)
+      getChildrenEls(item == state.selected && state.items(item)._1)(elements)
+    }
+  )
 
   val service = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
     stateStorage = storage,
@@ -148,31 +189,7 @@ object TreeView extends KorolevBlazeServer {
         'body (
           'div ('class /= "treeview",
             'ul ('class /= "list-group",
-              state.items.keys map { item =>
-                'li ('class /= "list-group-item",
-                  getStyleClass(item == state.selected && state.items(item)._1),
-                  createCheckbox(state.items, item)(parentEvent _),
-                  'span (
-                    event('click) {
-                      immediateTransition { case s =>
-                        val (isOpened, els) = s.items(item)
-
-                        // reset other 'opened' state to false
-                        val other = s.items.filter(_._1 != item).map(p => (p._1, p._2.copy(_1 = false)))
-                        val updatedItems = (s.items ++ other) + (item -> (!isOpened, els))
-
-                        val updatedEl = s.els + (item -> generateLI(updatedItems(item)._2.items, item))
-                        s.copy(selected = item, items = updatedItems, els = updatedEl)
-                      }
-                    },
-                    getStyleFor(item, item == state.selected)
-                  ), {
-                    // check if the  selected item is used as a key for els in State
-                    val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector() else state.els(state.selected)
-                    getChildrenEls(item == state.selected && state.items(item)._1)(elements)
-                  }
-                )
-              }
+              state.items.keys map { item => createTree(item)(state) }
             )
           )
         )
@@ -226,8 +243,16 @@ object State {
   case class Leaf(text: String, checked: Boolean = false) extends Item
 
   object Item {
-    def apply(n: Int): Vector[Leaf] = (0 to n).toVector.map {
-      i => Leaf(s"Item #$i", checked = false)
+    def apply(n: Int): Vector[Item] = (0 to n).toVector.map {
+      l => {
+        if (l < 2) {
+          val leafs = (0 to 2).toVector.map { i =>
+            Leaf(s"Nested Item $i", checked = false)
+          }
+          Tree(s"Nested Tree #$l", checked = false, leafs)
+        } else
+          Leaf(s"Item #$l", checked = false)
+      }
     }
   }
 
