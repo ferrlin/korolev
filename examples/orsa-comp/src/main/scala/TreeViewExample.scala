@@ -81,10 +81,10 @@ object TreeViewExample extends KorolevBlazeServer {
     * @param items
     * @return
     */
-  private def generateLI(items: Vector[State.Item], ref: String): Vector[VDom.Node] = items map {
-    case (item: LeafItem) => 'li ('class /= "list-group-item",
+  private def generateLI(items: Vector[ChildView], ref: String): Vector[VDom.Node] = items map {
+    case ChildView(isOpened, item: LeafItem) => 'li ('class /= "list-group-item",
       createCheckbox(item, ref)(childCheckboxEvent(ref) _), item.text)
-    case (item: TreeItem) => {
+    case ChildView(isOpened, item: TreeItem) => {
       'li ('class /= "list-group-item",
         createCheckbox(item, ref)(childCheckboxEvent(ref) _), item.text, generateLI(item.items, item.text))
     }
@@ -102,8 +102,8 @@ object TreeViewExample extends KorolevBlazeServer {
       val TreeView(opened, ref) = s.items(item)
       val updatedStatus = !ref.checked
       val updatedChildren = ref.items.map {
-        case l: LeafItem => l.copy(checked = updatedStatus)
-        case t: TreeItem => t.copy(checked = updatedStatus)
+        case c@ChildView(s, l: LeafItem) => c.copy(item = l.copy(checked = updatedStatus))
+        case c@ChildView(s, t: TreeItem) => c.copy(item = t.copy(checked = updatedStatus))
       }
       val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
       val updatedEl = s.els + (item -> generateLI(updatedTree.items, ref.text))
@@ -121,12 +121,12 @@ object TreeViewExample extends KorolevBlazeServer {
   def childCheckboxEvent(ref: String)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
     case s: State =>
       val TreeView(opened, parentRef) = s.items(ref)
-      val updated: Vector[State.Item] = parentRef.items.map {
-        case l: LeafItem if (l.text == name) =>
-          l.copy(checked = !isChecked)
-        case t: TreeItem if (t.text == name) =>
-          t.copy(checked = !isChecked)
-        case i: State.Item => i
+      val updated: Vector[ChildView] = parentRef.items.map {
+        case c@ChildView(_, l: LeafItem) if (l.text == name) =>
+          c.copy(item = l.copy(checked = !isChecked))
+        case c@ChildView(_, t: TreeItem) if (t.text == name) =>
+          c.copy(item = t.copy(checked = !isChecked))
+        case c@ChildView(_, i: State.Item) => c.copy(item = i)
       }
 
       val updatedRef = parentRef.copy(items = updated)
@@ -240,6 +240,15 @@ object View {
 
   case class TreeView(isOpened: Boolean, tree: TreeItem)
 
+  /**
+    * isOpened is defaulted to false for non
+    * tree child view (ie Leaf).
+    *
+    * @param isOpened
+    * @param item
+    */
+  case class ChildView(isOpened: Boolean = false, item: Item)
+
 }
 
 object State {
@@ -247,20 +256,20 @@ object State {
 
   sealed trait Item
 
-  case class TreeItem(text: String, checked: Boolean = false, items: Vector[State.Item]) extends Item
+  case class TreeItem(text: String, checked: Boolean = false, items: Vector[ChildView]) extends Item
 
   case class LeafItem(text: String, checked: Boolean = false) extends Item
 
   object Item {
-    def apply(n: Int): Vector[Item] = (0 to n).toVector.map {
+    def apply(n: Int): Vector[ChildView] = (0 to n).toVector.map {
       l => {
         if (l < 2) {
-          val leafs = (0 to 2).toVector.map { i =>
-            LeafItem(s"Nested Item $i", checked = false)
+          val children = (0 to 2).toVector.map { i =>
+            ChildView(item = LeafItem(s"Nested Item $i", checked = false))
           }
-          TreeItem(s"Nested Tree #$l", checked = false, leafs)
+          ChildView(item = TreeItem(s"Nested Tree #$l", checked = false, children))
         } else
-          LeafItem(s"Item #$l", checked = false)
+          ChildView(item = LeafItem(s"Item #$l", checked = false))
       }
     }
   }
