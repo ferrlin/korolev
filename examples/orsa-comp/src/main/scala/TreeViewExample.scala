@@ -9,7 +9,6 @@ import View._
 
 object TreeViewExample extends KorolevBlazeServer {
 
-
   import State.effects._
 
   val TREE_STYLE_PLUS = "icon expand-icon glyphicon glyphicon-plus"
@@ -152,13 +151,22 @@ object TreeViewExample extends KorolevBlazeServer {
     */
   def childCheckboxEvent(ref: View)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
     case s: State => {
+
       val (_, selected) = ref match {
         case tv: TreeView => (tv.isOpened, tv.tree.text)
-        case cv: ChildView => cv.item match {
-          case ti: TreeItem => (cv.isOpened, ti.text)
-          case ci: LeafItem => (cv.isOpened, ci.text)
+        case cv: ChildView => {
+
+          val genealogy = cv.genealogy
+          val depth = cv.depth
+          println(s"$genealogy  with depth ::$depth")
+
+          cv.item match {
+            case ti: TreeItem => (cv.isOpened, ti.text)
+            case ci: LeafItem => (cv.isOpened, ci.text)
+          }
         }
       }
+
 
       val isRoot = s.items.keySet.contains(selected)
       if (isRoot) {
@@ -209,19 +217,15 @@ object TreeViewExample extends KorolevBlazeServer {
     case s =>
       println(s"TARGET $target is tree view collapsed${target.get.isOpened}")
 
-      val cv = target.get
-      val toggle = !cv.isOpened
+      if (target.isDefined) {
+        val cv = target.get
+        val toggle = !cv.isOpened
+        cv.copy(isOpened = toggle)
 
-      // search for the parent text for get the key
-      // used for search State.#items
-      println(s"PARENT :: ${cv.parent}")
+        val updatedView = traverse(cv, s)
 
-      cv.copy(isOpened = toggle)
-      //      println(s"Root: $rootSelected ::: with selections:$selected")
-      //      val TreeView(isOpened, els) = s.items(rootSelected)
-      //      els.items.map {
-      //        }
-      //      }
+        println(s"UPDATE view ${updatedView}")
+      }
       s
   }
 
@@ -244,9 +248,9 @@ object TreeViewExample extends KorolevBlazeServer {
       'span (
         event('click) {
           immediateTransition {
-            if (isFound) mainTreeEvent(item) else {
-              //              val selection = hierarchy(view.get, Array.empty[String])
-              nestedTreeEvent(view) /*, selection: _*)*/
+            if (isFound) mainTreeEvent(item)
+            else {
+              nestedTreeEvent(view)
             }
           }
         },
@@ -254,11 +258,6 @@ object TreeViewExample extends KorolevBlazeServer {
       ), childrenEls
     )
   }
-
-
-  //***
-  def hierarchy(child: ChildView, acc: Array[String]): Array[String] = ???
-
 
   val service = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
     stateStorage = storage,
@@ -322,6 +321,15 @@ object TreeViewExample extends KorolevBlazeServer {
   )
 }
 
+
+sealed trait View2
+
+object View2 {
+
+  case class TreeView(isOpened: Boolean, node: State.TreeItem) extends View2
+
+}
+
 case class State(selected: String = State.utv01.tree.text,
                  items: Map[String, TreeView] = Map(
                    State.utv01.tree.text -> State.utv01,
@@ -342,9 +350,59 @@ object View {
     * tree child view (ie Leaf).
     *
     */
-  case class ChildView(isOpened: Boolean = true, item: Item, parent: Option[TreeView]) extends View
+  case class ChildView(isOpened: Boolean = true, item: Item, parent: Option[View]) extends View {
+
+    lazy val genealogy: Seq[String] = getAncestry(parent)(Seq.empty[String]) :+ getText(item)
+    lazy val depth = genealogy.length
 
 
+    private def getText(item: Item): String = item match {
+      case i: TreeItem => i.text
+      case l: LeafItem => l.text
+      case _ => ""
+    }
+
+    /**
+      * Get the ancestry of this child view.
+      */
+    private def getAncestry(parent: Option[View])(seq: Seq[String]): Seq[String] = if (parent.isDefined) {
+      parent.get match {
+        case c: ChildView =>
+          val name: String = getText(c.item)
+          getAncestry(c.parent)(seq :+ name)
+        case t: TreeView => t.tree.text +: seq
+      }
+    } else Nil
+  }
+
+  /**
+    *
+    * @param cv
+    * @param state
+    * @return
+    */
+  def traverse(cv: ChildView, state: State): View = {
+    def iter(names: Seq[String], vs: Vector[ChildView], v: Option[View]): Option[View] = {
+      if (names == Nil) v
+      else {
+        val res: Vector[(String, Vector[ChildView])] = vs.map {
+          case c: ChildView => c.item match {
+            case l: LeafItem => (l.text, Vector.empty)
+            case t: TreeItem => (t.text, t.items)
+          }
+        }.filter { case (n, _) => n == names.head }
+
+        if (names.tail.nonEmpty)
+          iter(names.tail, res(0)._2, None)
+        else
+          Some(res(0)._2(0))
+      }
+    }
+
+    // index 0 refers to root parent..
+    val root = cv.genealogy(0)
+    iter(cv.genealogy.tail, state.items(root).tree.items, None).getOrElse(null)
+  }
 }
 
 object State {
@@ -357,13 +415,15 @@ object State {
   case class LeafItem(text: String, checked: Boolean = false) extends Item
 
   object Item {
-    def apply(n: Int, tv: Option[TreeView] = None): Vector[ChildView] = (0 to n).toVector.map {
+    def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = (0 to n).toVector.map {
       l => {
         if (l < 2) {
-          val children = (0 to 2).toVector.map { i =>
-            ChildView(item = LeafItem(s"Nested Item $i", checked = false), parent = tv)
+          val nestedTree = ChildView(item = TreeItem(s"temporary #$l", checked = false), parent = tv)
+
+          val childrenViews = (0 to 2).toVector.map { i =>
+            ChildView(item = LeafItem(s"Nested Item $i", checked = false), parent = Some(nestedTree))
           }
-          ChildView(item = TreeItem(s"Nested Tree #$l", checked = false, children), parent = tv)
+          nestedTree.copy(item = TreeItem(s"Nested Tree #$l", checked = false, childrenViews))
         } else
           ChildView(item = LeafItem(s"Item #$l", checked = false), parent = tv)
       }
@@ -376,20 +436,23 @@ object State {
   val thirdName = "Tree3"
 
 
-  val tv01: TreeView = TreeView(false, TreeItem(text = defaultName))
-  val tv02: TreeView = TreeView(false, TreeItem(text = secondName))
-  val tv03: TreeView = TreeView(false, TreeItem(text = thirdName))
+  val tv01: TreeView = TreeView(false, null)
+  val tv02: TreeView = TreeView(false, null)
+  val tv03: TreeView = TreeView(false, null)
 
-  val ti01: TreeItem = TreeItem(defaultName, checked = false, Item(5, Some(tv01)))
-  val ti02: TreeItem = TreeItem(secondName, checked = false, Item(5, Some(tv02)))
-  val ti03: TreeItem = TreeItem(thirdName, checked = false, Item(5, Some(tv03)))
+  val ti01: TreeItem = TreeItem(defaultName, checked = false, Item(3, Some(tv01)))
+  val ti02: TreeItem = TreeItem(secondName, checked = false, Item(7, Some(tv02)))
+  val ti03: TreeItem = TreeItem(thirdName, checked = false, Item(10, Some(tv03)))
 
   val utv01 = tv01.copy(tree = ti01)
   val utv02 = tv02.copy(tree = ti02)
   val utv03 = tv03.copy(tree = ti03)
 
-  //Constraints:
-  //(a). Depth up to 2 level only
-  //(b) reliance on the parent parameter in ChildView to get the text that will serve a key for searching State.items
-  //(c)
+  // test..
+  ti02.items.foreach { cv =>
+    cv.item match {
+      case t: TreeItem => t.items.foreach(i => println(s">>> ${i.genealogy} with depth[${i.depth}]"))
+      case _ => println(s">>> ${cv.genealogy} with depth[${cv.depth}]")
+    }
+  }
 }
