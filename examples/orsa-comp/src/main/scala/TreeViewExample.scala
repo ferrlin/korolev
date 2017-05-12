@@ -186,7 +186,8 @@ object TreeViewExample extends KorolevBlazeServer {
       } else {
         // when an item clicked is nested deeper
         //
-        println(s"Non root: $ref with name:$name and isChecked:$isChecked")
+        val updatedView = traverse(ref.asInstanceOf[ChildView], s)
+        println(s"Checkbox UPDATED view ${updatedView}")
         s
       }
     }
@@ -418,12 +419,13 @@ object State {
     def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = (0 to n).toVector.map {
       l => {
         if (l < 2) {
-          val nestedTree = ChildView(item = TreeItem(s"temporary #$l", checked = false), parent = tv)
-
+          val nestedItem = TreeItem(s"Nested Tree #$l", checked = false)
+          val nestedTree = ChildView(item = nestedItem, parent = tv)
           val childrenViews = (0 to 2).toVector.map { i =>
             ChildView(item = LeafItem(s"Nested Item $i", checked = false), parent = Some(nestedTree))
           }
-          nestedTree.copy(item = TreeItem(s"Nested Tree #$l", checked = false, childrenViews))
+
+          nestedTree.copy(item = nestedItem.copy(items = childrenViews))
         } else
           ChildView(item = LeafItem(s"Item #$l", checked = false), parent = tv)
       }
@@ -436,20 +438,26 @@ object State {
   val thirdName = "Tree3"
 
 
-  val tv01: TreeView = TreeView(false, null)
-  val tv02: TreeView = TreeView(false, null)
-  val tv03: TreeView = TreeView(false, null)
+  val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty)
+  val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
+  val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
 
-  val ti01: TreeItem = TreeItem(defaultName, checked = false, Item(3, Some(tv01)))
-  val ti02: TreeItem = TreeItem(secondName, checked = false, Item(7, Some(tv02)))
-  val ti03: TreeItem = TreeItem(thirdName, checked = false, Item(10, Some(tv03)))
 
-  val utv01 = tv01.copy(tree = ti01)
-  val utv02 = tv02.copy(tree = ti02)
-  val utv03 = tv03.copy(tree = ti03)
+  val tv01: TreeView = TreeView(false, ti01)
+  val tv02: TreeView = TreeView(false, ti02)
+  val tv03: TreeView = TreeView(false, ti03)
+
+  val children01 = Item(3, Some(tv01))
+  val children02 = Item(7, Some(tv02))
+  val children03 = Item(10, Some(tv03))
+
+  // added children to tree items
+  val utv01 = tv01.copy(tree = ti01.copy(items = children01))
+  val utv02 = tv02.copy(tree = ti02.copy(items = children02))
+  val utv03 = tv03.copy(tree = ti03.copy(items = children03))
 
   // test..
-  ti02.items.foreach { cv =>
+  utv02.tree.items.foreach { cv =>
     cv.item match {
       case t: TreeItem => t.items.foreach(i => println(s">>> ${i.genealogy} with depth[${i.depth}]"))
       case _ => println(s">>> ${cv.genealogy} with depth[${cv.depth}]")
