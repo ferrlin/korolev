@@ -218,16 +218,30 @@ object TreeViewExample extends KorolevBlazeServer {
     case s =>
       println(s"TARGET $target is tree view collapsed${target.get.isOpened}")
 
-      if (target.isDefined) {
-        val cv = target.get
-        val toggle = !cv.isOpened
-        cv.copy(isOpened = toggle)
+      //      if (target.isDefined) {
+      val cv = target.get
+      val toggle = !cv.isOpened
+      val updated = cv.copy(isOpened = toggle)
 
-        val updatedView = traverse(cv, s)
+      println(s"UPDATED NESTED TREE even $updated")
+      val updatedItem = traverse(updated, s)
 
-        println(s"UPDATE view ${updatedView}")
-      }
-      s
+      println(s"UPDATE view ${updatedItem}")
+
+      println("-----------------------------")
+      println(s"OLD state $s")
+
+      val selected = cv.genealogy(0)
+      val temp: TreeView = s.items(selected)
+      val updatedTree: TreeView = temp.copy(tree = s.items(cv.genealogy(0)).tree.copy(items = updatedItem))
+      val updatedState = s.items + (cv.genealogy(0) -> updatedTree)
+
+      println("-----------------------------")
+      println(s"UPDATED state $updatedState")
+      val updatedEl = s.els + (selected -> generateLI(updatedState(selected).tree.items, ref = selected))
+      s.copy(items = updatedState, els = updatedEl)
+    //      }
+    //      s
   }
 
   /**
@@ -382,27 +396,46 @@ object View {
     * @param state
     * @return
     */
-  def traverse(cv: ChildView, state: State): View = {
-    def iter(names: Seq[String], vs: Vector[ChildView], v: Option[View]): Option[View] = {
-      if (names == Nil) v
-      else {
-        val res: Vector[(String, Vector[ChildView])] = vs.map {
-          case c: ChildView => c.item match {
-            case l: LeafItem => (l.text, Vector.empty)
-            case t: TreeItem => (t.text, t.items)
-          }
-        }.filter { case (n, _) => n == names.head }
+  def traverse(cv: ChildView, state: State): Vector[ChildView] = {
+    def iter(names: Seq[String], vs: Vector[ChildView]): Tuple2[ChildView, Vector[ChildView]] = {
 
-        if (names.tail.nonEmpty)
-          iter(names.tail, res(0)._2, None)
-        else
-          Some(res(0)._2(0))
+      val res: (String, Vector[ChildView]) = vs.map {
+        case c: ChildView => c.item match {
+          case l: LeafItem => (l.text, Vector.empty[ChildView])
+          case t: TreeItem => (t.text, t.items)
+        }
+      }.filter { case (n, _) => n == names.head }.head
+
+      println("--------------------------------")
+      println(s"RES value $res")
+      println("--------------------------------")
+      println(s"BEFORE VS values $vs")
+      println("--------------------------------")
+
+      val result: Vector[ChildView] = vs.map {
+        case c: ChildView =>
+          c.item match {
+            case l: LeafItem if (l.text == names.head) => cv
+            case t: TreeItem if (t.text == names.head) =>
+              if (names.tail.nonEmpty) iter(names.tail, res._2)._1
+              else cv
+            case _ => c
+          }
       }
+
+      println("--------------------------------")
+      println(s"AFTER VS [result] values $result")
+      println("--------------------------------")
+
+      (result.head, result)
     }
 
     // index 0 refers to root parent..
-    val root = cv.genealogy(0)
-    iter(cv.genealogy.tail, state.items(root).tree.items, None).getOrElse(null)
+    val (root, remains) = cv.genealogy match {
+      case h :: tail => (h, tail)
+    }
+
+    iter(remains, state.items(root).tree.items)._2
   }
 }
 
