@@ -90,8 +90,8 @@ object TreeViewExample extends KorolevBlazeServer {
   private def generateLI(items: Vector[ChildView], doGenerate: Boolean = true, ref: String): Vector[VDom.Node] =
     if (doGenerate)
       items map {
-        case ChildView(_, item: LeafItem, parent) => 'li ('class /= "list-group-item",
-          createCheckbox(item, ref)(childCheckboxEvent(parent.get) _), item.text)
+        case child@ChildView(_, item: LeafItem, parent) => 'li ('class /= "list-group-item",
+          createCheckbox(item, ref)(childCheckboxEvent(child) _), item.text)
         case child@ChildView(isOpened, item: TreeItem, parent) => {
           createTree(item, Some(child))(None,
             createCheckbox(item, ref)(childCheckboxEvent(parent.get) _)
@@ -155,18 +155,13 @@ object TreeViewExample extends KorolevBlazeServer {
       val (_, selected) = ref match {
         case tv: TreeView => (tv.isOpened, tv.tree.text)
         case cv: ChildView => {
-
-          val genealogy = cv.genealogy
-          val depth = cv.depth
-          println(s"$genealogy  with depth ::$depth")
-
+          println(s"GENEALOGY ${cv.genealogy}")
           cv.item match {
             case ti: TreeItem => (cv.isOpened, ti.text)
             case ci: LeafItem => (cv.isOpened, ci.text)
           }
         }
       }
-
 
       val isRoot = s.items.keySet.contains(selected)
       if (isRoot) {
@@ -185,10 +180,24 @@ object TreeViewExample extends KorolevBlazeServer {
         s.copy(items = s.items + (selected -> TreeView(opened, updatedRef)), els = updatedEl)
       } else {
         // when an item clicked is nested deeper
-        //
-        val updatedView = traverse(ref.asInstanceOf[ChildView], s)
+        val childRef = ref.asInstanceOf[ChildView]
+        val selected = childRef.genealogy(0)
+
+        println(s" GENEALOGY of ${childRef} checkbox#method ${childRef.genealogy}")
+
+        val updatedRef = childRef.copy(item = childRef.item match {
+          case l: LeafItem => l.copy(checked = !l.checked)
+          case t: TreeItem => t.copy(checked = !t.checked)
+        })
+
+        val updatedView = traverse(updatedRef, s)
         println(s"Checkbox UPDATED view ${updatedView}")
-        s
+
+        val TreeView(opened, parentRef) = s.items(selected)
+        val updatedParentRef = parentRef.copy(items = updatedView)
+        val updatedEls = s.els + (selected -> generateLI(updatedParentRef.items, ref = selected))
+        s.copy(items = s.items + (selected -> TreeView(opened, updatedParentRef)), els = updatedEls)
+        //        s
       }
     }
   }
@@ -218,7 +227,6 @@ object TreeViewExample extends KorolevBlazeServer {
     case s =>
       println(s"TARGET $target is tree view collapsed${target.get.isOpened}")
 
-      //      if (target.isDefined) {
       val cv = target.get
       val toggle = !cv.isOpened
       val updated = cv.copy(isOpened = toggle)
@@ -233,15 +241,13 @@ object TreeViewExample extends KorolevBlazeServer {
 
       val selected = cv.genealogy(0)
       val temp: TreeView = s.items(selected)
-      val updatedTree: TreeView = temp.copy(tree = s.items(cv.genealogy(0)).tree.copy(items = updatedItem))
-      val updatedState = s.items + (cv.genealogy(0) -> updatedTree)
+      val updatedTree: TreeView = temp.copy(tree = s.items(selected).tree.copy(items = updatedItem))
+      val updatedState = s.items + (selected -> updatedTree)
 
       println("-----------------------------")
       println(s"UPDATED state $updatedState")
       val updatedEl = s.els + (selected -> generateLI(updatedState(selected).tree.items, ref = selected))
       s.copy(items = updatedState, els = updatedEl)
-    //      }
-    //      s
   }
 
   /**
@@ -367,6 +373,7 @@ object View {
     */
   case class ChildView(isOpened: Boolean = true, item: Item, parent: Option[View]) extends View {
 
+
     lazy val genealogy: Seq[String] = getAncestry(parent)(Seq.empty[String]) :+ getText(item)
     lazy val depth = genealogy.length
 
@@ -374,7 +381,6 @@ object View {
     private def getText(item: Item): String = item match {
       case i: TreeItem => i.text
       case l: LeafItem => l.text
-      case _ => ""
     }
 
     /**
@@ -415,7 +421,8 @@ object View {
       val result: Vector[ChildView] = vs.map {
         case c: ChildView =>
           c.item match {
-            case l: LeafItem if (l.text == names.head) => cv
+            case l: LeafItem if (l.text == names.head) =>
+              if (names.tail.nonEmpty) iter(names.tail, res._2)._1 else cv
             case t: TreeItem if (t.text == names.head) =>
               if (names.tail.nonEmpty) iter(names.tail, res._2)._1
               else cv
@@ -434,6 +441,8 @@ object View {
     val (root, remains) = cv.genealogy match {
       case h :: tail => (h, tail)
     }
+
+    println(s"GENEALOGY ${cv.genealogy}")
 
     iter(remains, state.items(root).tree.items)._2
   }
