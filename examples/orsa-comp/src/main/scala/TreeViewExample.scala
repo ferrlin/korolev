@@ -14,8 +14,11 @@ object TreeViewExample extends KorolevBlazeServer {
   val TREE_STYLE_PLUS = "icon expand-icon glyphicon glyphicon-plus"
   val TREE_STYLE_MINUS = "icon expand-icon glyphicon glyphicon-minus"
 
-  val STYLE_CHECKED = "icon check-icon glyphicon glyphicon-cloud"
+  val STYLE_CHECKED = "icon check-icon glyphicon glyphicon-check"
   val STYLE_UNCHECKED = "icon check-icon glyphicon glyphicon-unchecked"
+
+  val STYLE_LIST_ITEM = "list-group-item node-treeview-checkable"
+  val STYLE_SUB_ITEM = ""
 
 
   // Handler to input
@@ -77,11 +80,11 @@ object TreeViewExample extends KorolevBlazeServer {
     * @return
     */
   private def getStyleFor(name: String, isSelected: Boolean): VDom.Node = {
-    if (isSelected) 'strong (name) else 'i (name)
+    if (isSelected) 'strong (name) else 'span (name)
   }
 
   private def getChildrenEls(isSelected: Boolean)(els: Vector[VDom.Node]): Vector[VDom.Node] =
-    if (isSelected && els.nonEmpty) els else Vector('br ())
+    if (isSelected && els.nonEmpty) els else Vector.empty[VDom.Node]
 
   /**
     *
@@ -89,20 +92,19 @@ object TreeViewExample extends KorolevBlazeServer {
     */
   private def generateLI(items: Vector[ChildView], doGenerate: Boolean = true, ref: String): Vector[VDom.Node] =
     if (doGenerate)
-      items map {
-        case child@ChildView(_, item: LeafItem, parent) => 'li ('class /= "list-group-item",
-          createCheckbox(item, ref)(childCheckboxEvent(child) _), item.text)
+      items.flatMap {
+        case child@ChildView(_, item: LeafItem, parent) => Seq(
+          'li ('class /= STYLE_LIST_ITEM,
+            createCheckbox(item, ref)(childCheckboxEvent(child) _), item.text))
         case child@ChildView(isOpened, item: TreeItem, parent) => {
           createTree(item, Some(child))(None,
             createCheckbox(item, ref)(childCheckboxEvent(parent.get) _)
             , {
               generateLI(item.items, isOpened, ref)
-            }
-          )
+            })
         }
       }
-
-    else Vector()
+    else Vector.empty[VDom.Node]
 
 
   /**
@@ -155,7 +157,6 @@ object TreeViewExample extends KorolevBlazeServer {
       val (_, selected) = ref match {
         case tv: TreeView => (tv.isOpened, tv.tree.text)
         case cv: ChildView => {
-          println(s"GENEALOGY ${cv.genealogy}")
           cv.item match {
             case ti: TreeItem => (cv.isOpened, ti.text)
             case ci: LeafItem => (cv.isOpened, ci.text)
@@ -181,9 +182,6 @@ object TreeViewExample extends KorolevBlazeServer {
       } else {
         // when an item clicked is nested deeper
         val childRef = ref.asInstanceOf[ChildView]
-
-        println(s" GENEALOGY of ${childRef} checkbox#method ${childRef.genealogy}")
-
         val selected = childRef.genealogy.head
         val updatedRef = childRef.copy(item = childRef.item match {
           case l: LeafItem => l.copy(checked = !l.checked)
@@ -262,13 +260,17 @@ object TreeViewExample extends KorolevBlazeServer {
     * @param state
     * @return
     */
-  def createTree(item: TreeItem, view: Option[ChildView] = None)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): VDom.Node = {
+  def createTree(item: TreeItem, view: Option[ChildView] = None)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
     val (isSelected, isOpened, isFound) = if (state.isDefined)
       (item.text == state.get.selected, state.get.items(item.text).isOpened, state.get.items.contains(item.text))
     else if (view.isDefined) (true, view.get.isOpened, false)
     else (false, false, false)
 
-    'li ('class /= "list-group-item",
+    val items: Vector[VDom.Node] = for (
+      el <- childrenEls
+    ) yield 'li ('class /= STYLE_LIST_ITEM, el)
+
+    Vector('li ('class /= STYLE_LIST_ITEM,
       getStyleClass(isSelected && isOpened),
       checkbox,
       'span (
@@ -280,9 +282,8 @@ object TreeViewExample extends KorolevBlazeServer {
             }
           }
         },
-        getStyleFor(item.text, isSelected)
-      ), childrenEls
-    )
+        getStyleFor(item.text, isSelected && isOpened)
+      ), items))
   }
 
   val service = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
@@ -290,7 +291,7 @@ object TreeViewExample extends KorolevBlazeServer {
     head = 'head (
       'title ("Simple Treeview Page"),
       'link (
-        'href /= "/bootstrap.min.css",
+        'href /= "https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css",
         'rel /= "stylesheet",
         'type /= "text/css"),
       'link (
@@ -302,19 +303,23 @@ object TreeViewExample extends KorolevBlazeServer {
         'body (
           'div ('class /= "treeview",
             'ul ('class /= "list-group",
-              state.items.keys map { item =>
+              state.items.keys.flatMap { item =>
+
+                /** start **/
                 createTree(state.items(item).tree)(Some(state), {
                   createCheckbox(state.items, item)(parentCheckboxEvent _)
                 }, {
                   // check if the  selected item is used as a key for els in State
-                  val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector() else state.els(state.selected)
+                  val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector.empty else state.els(state.selected)
                   getChildrenEls(item == state.selected && state.items(item).isOpened)(elements)
                 })
-              }
+                /** end **/
+              }.toList
             )
           )
         )
-    },
+    }
+    ,
     serverRouter = {
       ServerRouter(
         dynamic = (_, _) => Router(
@@ -383,12 +388,28 @@ object View {
     lazy val depth = genealogy.length
 
 
-    def getText(item: Item): String = item match {
+    private def getText(item: Item): String = item match {
       case i: TreeItem => i.text
       case l: LeafItem => l.text
     }
 
     def getText: String = getText(item)
+
+    /**
+      *
+      * @param item
+      * @return
+      */
+    private def isChecked(item: Item): Boolean = item match {
+      case t: TreeItem => t.checked
+      case l: LeafItem => l.checked
+    }
+
+    /**
+      *
+      * @return
+      */
+    def getCheckedValue: Boolean = isChecked(item)
 
     /**
       * Get the ancestry of this child view.
@@ -436,22 +457,29 @@ object View {
       * @param structure
       * @return
       */
-    def compose(structure: Seq[ChildView]): Option[ChildView] =
-      structure.foldRight(Option.empty[ChildView]) { (i, result) =>
-        if (!result.isDefined) Some(i)
+    def compose(structure: Seq[ChildView]): Option[ChildView] = {
+      val (optChildView, _) = structure.foldRight((Option.empty[ChildView], false)) { (i, pair) =>
+        val (result, state) = pair
+        if (!result.isDefined) (Some(i), i.getCheckedValue)
         else {
           val updated: ChildView = i.item match {
             case t: TreeItem =>
               val up: Vector[ChildView] = t.items.map { sub =>
                 if (sub.getText == result.get.getText) result.get else sub
               }
-              i.copy(item = t.copy(items = up))
-            case l: LeafItem if (l.text == result.get.getText) => i.copy(item = result.get.item)
+              //              val pState = !(t.items.count(_.getCheckedValue == false) > 0)
+              i.copy(item = t.copy(/*checked = pState,*/ items = up))
+            case l: LeafItem if (l.text == result.get.getText) =>
+              i.copy(item = result.get.item)
             case _ => i
           }
-          Some(updated)
+          (Some(updated), state)
         }
       }
+
+      // result
+      optChildView
+    }
 
     // index 0 refers to root parent..
     val (root, remains) = cv.genealogy match {
