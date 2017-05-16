@@ -283,7 +283,7 @@ object TreeViewExample extends KorolevBlazeServer {
           }
         },
         getStyleFor(item.text, isSelected && isOpened)
-      ), items))
+      ), items)) // ++ items
   }
 
   val service = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
