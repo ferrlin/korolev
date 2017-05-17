@@ -18,6 +18,7 @@ object TreeViewExample extends KorolevBlazeServer {
   val STYLE_UNCHECKED = "icon check-icon glyphicon glyphicon-unchecked"
 
   val STYLE_LIST_ITEM = "list-group-item node-treeview-checkable"
+  val STYLE_TREE_ITEM = "list-group-item node-treeview-checkable"
   val STYLE_SUB_ITEM = ""
 
 
@@ -31,8 +32,14 @@ object TreeViewExample extends KorolevBlazeServer {
     * @param isSelected
     * @return
     */
-  private def getStyleClass(isSelected: Boolean): VDom.Node =
-    'span ('class /= (if (isSelected) TREE_STYLE_MINUS else TREE_STYLE_PLUS))
+  private def getTreeStyleClass(isSelected: Boolean, root: Option[TreeItem] = None, nested: Option[ChildView] = None)(t: (TreeItem) => StateManager.Transition[State])(n: (Option[ChildView]) => StateManager.Transition[State]): VDom.Node =
+    'span ('class /= (if (isSelected) TREE_STYLE_MINUS else TREE_STYLE_PLUS),
+      event('click) {
+        immediateTransition {
+          if (nested.isDefined) n(nested) else t(root.get)
+        }
+      }
+    )
 
   /**
     *
@@ -270,8 +277,8 @@ object TreeViewExample extends KorolevBlazeServer {
       el <- childrenEls
     ) yield 'li ('class /= STYLE_LIST_ITEM, el)
 
-    Vector('li ('class /= STYLE_LIST_ITEM,
-      getStyleClass(isSelected && isOpened),
+    Vector('li ('class /= STYLE_TREE_ITEM,
+      getTreeStyleClass(isSelected && isOpened, Some(item), view)(mainTreeEvent _)(nestedTreeEvent _),
       checkbox,
       'span (
         event('click) {
