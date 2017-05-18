@@ -16,4 +16,4 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  * ========================================================= */
- .treeview .list-group-item{cursor:pointer;border:0px;padding:1px 16px} .treeview .list-group-tree{cursor:pointer;border:0px;padding-top:0px;padding-bottom:0px} .treeview span.indent{margin-left:10px;margin-right:10px}.treeview span.icon{width:12px;margin-right:5px}.treeview .node-disabled{color:silver;cursor:not-allowed}.node-treeview-checkable{}.node-treeview-checkable:not(.node-disabled):hover{background-color:#F5F5F5;}
+ .treeview .list-group-item{cursor:pointer;border:0px;padding:0px 16px} .treeview .list-group-tree{cursor:pointer;border:0px;padding-top:0px;padding-bottom:0px} .treeview span.indent{margin-left:10px;margin-right:10px}.treeview span.icon{width:12px;margin-right:5px}.treeview .node-disabled{color:silver;cursor:not-allowed}.node-treeview-checkable{}.node-treeview-checkable:not(.node-disabled):hover{background-color:#F5F5F5;}
