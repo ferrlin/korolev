@@ -1,3 +1,4 @@
+import State.Item.{childLeaf, childTree}
 import State._
 import View._
 import korolev._
@@ -208,6 +209,7 @@ object TreeViewExample extends KorolevBlazeServer {
   }
 
   private def updateRootValue(root: TreeItem, child: Option[ChildView]): Vector[ChildView] = {
+    println(s"CHILD >>>> $child")
     require(child.isDefined, "Child should be defined.")
     val childText = child.get.getText
 
@@ -512,20 +514,65 @@ object State {
   case class LeafItem(text: String, checked: Boolean = false) extends Item
 
   object Item {
-    def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = (0 to n).toVector.map {
-      l => {
-        if (l < 2) {
-          val nestedItem = TreeItem(s"Nested Tree #$l", checked = false)
-          val nestedTree = ChildView(item = nestedItem, parent = tv)
-          val childrenViews = (0 to 2).toVector.map { i =>
-            ChildView(item = LeafItem(s"Nested Item $i", checked = false), parent = Some(nestedTree))
-          }
-
-          nestedTree.copy(item = nestedItem.copy(items = childrenViews))
-        } else
-          ChildView(item = LeafItem(s"Item #$l", checked = false), parent = tv)
+    def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = {
+      val nested: Option[ChildView] = (1 to 5).toVector.map { i =>
+        childTree(i, tv)
+      }.foldRight(Option.empty[ChildView]) { (i, cv) =>
+        if (cv.isEmpty) {
+          val item = i.item.asInstanceOf[TreeItem]
+          val up = item.copy(items = Vector(childLeaf(1, Some(i))))
+          Some(i.copy(item = up))
+        } else {
+          val item = i.item.asInstanceOf[TreeItem]
+          val up = item.copy(items = Vector(cv.get))
+          Some(i.copy(item = up))
+        }
       }
+
+      (0 to n).toVector.map {
+        l => {
+          if (l < 2) {
+            val nestedItem = TreeItem(s"Nested Tree #$l", checked = false)
+            val nestedTree = ChildView(item = nestedItem, parent = tv)
+
+            val childrenViews = (0 to 2).toVector.map { i =>
+              ChildView(item = LeafItem(s"Nested Item $i", checked = false), parent = Some(nestedTree))
+            }
+            nestedTree.copy(item = nestedItem.copy(items = childrenViews))
+          } else
+            ChildView(item = LeafItem(s"Item #$l", checked = false), parent = tv)
+        }
+      } :+ nested.get
     }
+
+    /**
+      * Utility method to create child Tre
+      *
+      * @param count
+      * @param parent
+      * @return
+      */
+    def childTree(count: Int, parent: Option[View]): ChildView = {
+      val name = parent.get match {
+        case t: TreeView => t.tree.text
+        case c: ChildView => c.getText
+      }
+      val tree = TreeItem(s"$name #$count", checked = false)
+      ChildView(item = tree, parent = parent)
+    }
+
+    /**
+      * Utility method to create child leaves
+      *
+      * @param count
+      * @param parent
+      * @return
+      */
+    def childLeaf(count: Int, parent: Option[ChildView]): ChildView = {
+      val leaf = LeafItem(s"${parent.get.getText} #count", checked = false)
+      ChildView(item = leaf, parent = parent)
+    }
+
   }
 
   // sample test instances
@@ -546,6 +593,7 @@ object State {
   val children01 = Item(3, Some(tv01))
   val children02 = Item(7, Some(tv02))
   val children03 = Item(10, Some(tv03))
+
 
   // added children to tree items
   val utv01 = tv01.copy(tree = ti01.copy(items = children01))
