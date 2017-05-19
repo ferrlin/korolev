@@ -104,12 +104,11 @@ object TreeViewExample extends KorolevBlazeServer {
         case child@ChildView(_, item: LeafItem, parent) => Seq(
           'li ('class /= STYLE_LIST_ITEM,
             createCheckbox(item, ref)(childCheckboxEvent(child) _), item.text))
-        case child@ChildView(isOpened, item: TreeItem, parent) => {
+        case child@ChildView(isOpened, item: TreeItem, Some(parent)) => {
+          val toUse: View = if (parent.isInstanceOf[TreeView]) parent else child
           createTree(item, Some(child))(None,
-            createCheckbox(item, ref)(childCheckboxEvent(parent.get) _)
-            , {
-              generateLI(item.items, isOpened, ref)
-            })
+            createCheckbox(item, ref)(childCheckboxEvent(toUse) _),
+            generateLI(item.items, isOpened, ref))
         }
       }
     else Vector.empty[VDom.Node]
@@ -152,7 +151,7 @@ object TreeViewExample extends KorolevBlazeServer {
     }
 
   /**
-    * Event for children (used in dealing with checkbox click
+    * Event for children (used in dealing with checkbox clicks event)
     *
     * @param ref
     * @param name
@@ -162,57 +161,73 @@ object TreeViewExample extends KorolevBlazeServer {
   def childCheckboxEvent(ref: View)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
     case s: State => {
 
-      val (_, selected) = ref match {
-        case tv: TreeView => (tv.isOpened, tv.tree.text)
+      val selected = ref match {
+        case tv: TreeView => tv.tree.text
         case cv: ChildView => {
           cv.item match {
-            case ti: TreeItem => (cv.isOpened, ti.text)
-            case ci: LeafItem => (cv.isOpened, ci.text)
+            case ti: TreeItem => ti.text
+            case ci: LeafItem => ci.text
           }
         }
       }
 
-      val isRoot = s.items.keySet.contains(selected)
-      if (isRoot) {
-        val TreeView(opened, parentRef) = s.items(selected)
-        val updated: Vector[ChildView] = parentRef.items.map {
-          case c@ChildView(_, l: LeafItem, _) if (l.text == name) =>
-            c.copy(item = l.copy(checked = !isChecked))
-          case c@ChildView(_, t: TreeItem, _) if (t.text == name) =>
-            val newT = t.copy(checked = !isChecked, items = updateSubElements(t.items, !isChecked))
-            c.copy(item = newT)
-          case c@ChildView(_, i: State.Item, _) => c.copy(item = i)
-        }
-
-        val updatedRef = parentRef.copy(items = updated)
-        val updatedEl = s.els + (selected -> generateLI(updatedRef.items, ref = selected))
-        s.copy(items = s.items + (selected -> TreeView(opened, updatedRef)), els = updatedEl)
+      //if ref is a tree view.
+      val (treeMap, elements) = if (s.items.keySet.contains(selected)) {
+        val reference@TreeView(opened, treeItem) = updateReference(s.items(selected), Some(name), isChecked).asInstanceOf[TreeView]
+        val updatedEls = s.els + (selected -> generateLI(treeItem.items, ref = selected))
+        ((selected -> reference), updatedEls)
       } else {
         // when an item clicked is nested deeper
         val childRef = ref.asInstanceOf[ChildView]
         val selected = childRef.genealogy.head
-        val updatedRef = childRef.copy(item = childRef.item match {
-          case l: LeafItem => l.copy(checked = !l.checked)
-          case t: TreeItem => t.copy(checked = !t.checked)
-        })
-
-        val updatedItem = traverse(updatedRef, s)
-
-        val TreeView(opened, parentRef) = s.items(selected)
-        val updatedItems = updateRootValue(parentRef, updatedItem)
-        val updatedParentRef = parentRef.copy(items = updatedItems)
-
+        val reference: ChildView = updateReference(childRef, None, isChecked).asInstanceOf[ChildView]
+        val (opened, updatedParentRef) = updatedDeeperItems(reference, s, selected)
         val updatedEls = s.els + (selected -> generateLI(updatedParentRef.items, ref = selected))
-        s.copy(items = s.items + (selected -> TreeView(opened, updatedParentRef)), els = updatedEls)
+        ((selected -> TreeView(opened, updatedParentRef)), updatedEls)
       }
+
+      // updated the state with the changes in checkbox value
+      s.copy(items = s.items + treeMap, els = elements)
     }
   }
 
+  private def updateReference(reference: View, name: Option[String], isChecked: Boolean): View = reference match {
+    case tv@TreeView(opened, treeItem) =>
+      tv.copy(tree = treeItem.copy(items = treeItem.items.map {
+        case c@ChildView(_, l: LeafItem, _) if (name.isDefined) && (l.text == name.get) =>
+          c.copy(item = l.copy(checked = !isChecked))
+        case c@ChildView(_, t: TreeItem, _) if (name.isDefined) && (t.text == name.get) =>
+          c.copy(item = t.copy(checked = !isChecked, items = updateSubElements(t.items, !isChecked)))
+        case c@ChildView(_, i: State.Item, _) => c.copy(item = i)
+      }))
+    case cv: ChildView =>
+      cv.copy(item = cv.item match {
+        case l: LeafItem => l.copy(checked = !isChecked)
+        case t: TreeItem => t.copy(checked = !isChecked, items = updateSubElements(t.items, !isChecked))
+      })
+  }
+
+  /**
+    * Updating item deep in the tree hierarchy.
+    *
+    * @param ref
+    * @param s
+    * @param selected
+    * @return
+    */
+  private def updatedDeeperItems(ref: ChildView, s: State, selected: String): (Boolean, TreeItem) = {
+    val updatedItem: Option[ChildView] = traverse(ref, s)
+    val TreeView(opened, parentRef) = s.items(selected)
+    val updatedItems = updateRootValue(parentRef, updatedItem)
+
+    // return the updated parent reference
+    (opened, parentRef.copy(items = updatedItems))
+  }
+
+
   private def updateRootValue(root: TreeItem, child: Option[ChildView]): Vector[ChildView] = {
-    println(s"CHILD >>>> $child")
     require(child.isDefined, "Child should be defined.")
     val childText = child.get.getText
-
     // updated the root (treeview) with the updated view
     root.items.map { old =>
       old.item match {
@@ -248,8 +263,6 @@ object TreeViewExample extends KorolevBlazeServer {
     case s =>
 
       val cv = target.get
-
-      println(s"TARGET ::: $cv with:::${cv.genealogy}")
 
       val toggle = !cv.isOpened
       val updated = cv.copy(isOpened = toggle)
@@ -317,7 +330,6 @@ object TreeViewExample extends KorolevBlazeServer {
             'ul ('class /= "list-group",
               state.items.keys.flatMap { item =>
 
-                /** start **/
                 createTree(state.items(item).tree)(Some(state), {
                   createCheckbox(state.items, item)(parentCheckboxEvent _)
                 }, {
@@ -325,8 +337,7 @@ object TreeViewExample extends KorolevBlazeServer {
                   val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector.empty else state.els(state.selected)
                   getChildrenEls(item == state.selected && state.items(item).isOpened)(elements)
                 })
-                /** end **/
-              }.toList
+              }
             )
           )
         )
@@ -519,9 +530,8 @@ object State {
   object Item {
     def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = {
       var nestedParent: Option[ChildView] = Option.empty[ChildView]
-      val nested: Option[ChildView] = (1 to 5).toSeq.map { i =>
+      val nested: Option[ChildView] = (1 to 5).toList.map { i =>
         nestedParent = Some(childTree(i, if (nestedParent.isDefined) nestedParent else tv))
-        println(s"NESTED PARENT ::: $nestedParent")
         nestedParent.get
       }.foldRight(Option.empty[ChildView]) { (i, cv) =>
         if (cv.isEmpty) {
@@ -530,8 +540,10 @@ object State {
           Some(i.copy(item = up))
         } else {
           val item = i.item.asInstanceOf[TreeItem]
-          val withParent = cv.get.copy(parent = Some(i))
-          val up = item.copy(items = Vector(withParent))
+          val up = item.copy(items = Vector(cv.get))
+          val upV = i.copy(item = up)
+          val withParent = cv.get.copy(parent = Som(upV))
+
           Some(i.copy(item = up))
         }
       }
@@ -587,11 +599,9 @@ object State {
   val secondName = "Tree2"
   val thirdName = "Tree3"
 
-
   val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty)
   val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
   val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
-
 
   val tv01: TreeView = TreeView(false, ti01)
   val tv02: TreeView = TreeView(false, ti02)
@@ -602,8 +612,44 @@ object State {
   val children03 = Item(10, Some(tv03))
 
 
+  val d01 = childTree(1, Some(tv01))
+  val d02 = childTree(2, Some(d01))
+  val d03 = childTree(3, Some(d02))
+  val d04 = childTree(4, Some(d03))
+
+  val d05 = childLeaf(5, Some(d04))
+
+  val ud04 = d04.copy(item = d04.item match {
+    case t: TreeItem => t.copy(items = Vector(d05))
+    case i: Item => i
+  })
+
+  val ud03 = d03.copy(item = d03.item match {
+    case t: TreeItem => t.copy(items = Vector(ud04))
+    case i: Item => i
+  })
+
+  val ud02 = d02.copy(item = d02.item match {
+    case t: TreeItem => t.copy(items = Vector(ud03))
+    case i: Item => i
+  })
+
+  val ud01 = d01.copy(item = d01.item match {
+    case t: TreeItem => t.copy(items = Vector(ud02))
+    case i: Item => i
+  })
+
+  val fd04 = ud04.copy(parent = Some(ud03))
+  val fd03 = ud03.copy(parent = Some(ud02))
+  val fd02 = ud02.copy(parent = Some(ud01))
+
+  val fd01 = ud01.copy(item = ud01.item match {
+    case t: TreeItem => t.copy(items = Vector(fd02))
+    case i: Item => i
+  })
+
   // added children to tree items
-  val utv01 = tv01.copy(tree = ti01.copy(items = children01))
+  val utv01 = tv01.copy(tree = ti01.copy(items = children01 /*:+ fd01*/))
   val utv02 = tv02.copy(tree = ti02.copy(items = children02))
   val utv03 = tv03.copy(tree = ti03.copy(items = children03))
 
