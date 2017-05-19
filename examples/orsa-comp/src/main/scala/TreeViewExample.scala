@@ -542,7 +542,7 @@ object State {
           val item = i.item.asInstanceOf[TreeItem]
           val up = item.copy(items = Vector(cv.get))
           val upV = i.copy(item = up)
-          val withParent = cv.get.copy(parent = Som(upV))
+          val withParent = cv.get.copy(parent = Some(upV))
 
           Some(i.copy(item = up))
         }
