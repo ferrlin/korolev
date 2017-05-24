@@ -1,3 +1,5 @@
+import java.util.UUID
+
 import State.Item.{childLeaf, childTree}
 import State._
 import View._
@@ -6,6 +8,7 @@ import korolev.blazeServer._
 import korolev.execution._
 import korolev.server._
 
+import scala.annotation.tailrec
 import scala.concurrent.Future
 
 object TreeViewExample extends KorolevBlazeServer {
@@ -22,7 +25,6 @@ object TreeViewExample extends KorolevBlazeServer {
   val STYLE_TREE_ITEM = "list-group-item node-treeview-checkable"
   val STYLE_SUB_ITEM = ""
 
-
   // Handler to input
   val inputId: Effects.ElementId = elementId
   val storage: StateStorage[Future, State] = StateStorage.default[Future, State](State())
@@ -30,12 +32,12 @@ object TreeViewExample extends KorolevBlazeServer {
   /**
     * Tree element style when clicked/unclicked (ie '-' or '+')
     *
-    * @param isSelected
+    * @param isOpened
     * @return
     */
-  private def getTreeStyleClass(isSelected: Boolean, root: Option[TreeItem] = None, nested: Option[ChildView] = None)(t: (TreeItem) => StateManager.Transition[State])(n: (Option[ChildView]) => StateManager.Transition[State]): VDom.Node =
-    'span ('class /= (if (isSelected) TREE_STYLE_MINUS else TREE_STYLE_PLUS),
-      event('click) {
+  private def getTreeStyleClass(isOpened: Boolean, root: Option[TreeItem] = None, nested: Option[ChildView] = None)(t: (TreeItem) => StateManager.Transition[State])(n: (Option[ChildView]) => StateManager.Transition[State]): VDom.Node =
+    'span ('class /= (if (isOpened) TREE_STYLE_MINUS else TREE_STYLE_PLUS),
+      event('click, EventPhase.AtTarget) {
         immediateTransition {
           if (nested.isDefined) n(nested) else t(root.get)
         }
@@ -98,21 +100,33 @@ object TreeViewExample extends KorolevBlazeServer {
     *
     * @param items * @return
     */
-  private def generateLI(items: Vector[ChildView], doGenerate: Boolean = true, ref: String): Vector[VDom.Node] =
+  private def generateLI(items: Vector[ChildView], doGenerate: Boolean = true, ref: String)(state: Option[State]): Vector[VDom.Node] =
     if (doGenerate)
       items.flatMap {
         case child@ChildView(_, item: LeafItem, parent) => Seq(
           'li ('class /= STYLE_LIST_ITEM,
-            createCheckbox(item, ref)(childCheckboxEvent(child) _), item.text))
+            createCheckbox(item, ref)(childCheckboxEvent(child) _), {
+              val isSelected = state match {
+                case None => false
+                case Some(s) => s.itemSelected.exists(_.equals(item.id))
+              }
+              'span (
+                event('click) {
+                  immediateTransition {
+                    itemSelectedEvent(Some(child))
+                  }
+                },
+                getStyleFor(item.text, isSelected))
+            }
+          ))
         case child@ChildView(isOpened, item: TreeItem, Some(parent)) => {
           val toUse: View = if (parent.isInstanceOf[TreeView]) parent else child
-          createTree(item, Some(child))(None,
-            createCheckbox(item, ref)(childCheckboxEvent(toUse) _),
-            generateLI(item.items, isOpened, ref))
+          createTree(/*Some(item)*/ None, Some(child))(state,
+            createCheckbox(item, ref)(childCheckboxEvent(/*toUse*/ child) _),
+            generateLI(item.items, isOpened, ref)(state))
         }
       }
     else Vector.empty[VDom.Node]
-
 
   /**
     * Event used for parent tree when checkbox is clicked
@@ -131,7 +145,7 @@ object TreeViewExample extends KorolevBlazeServer {
           c.copy(item = uT)
       }
       val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
-      val updatedEl = s.els + (item -> generateLI(updatedTree.items, ref = ref.text))
+      val updatedEl = s.els + (item -> generateLI(updatedTree.items, ref = ref.text)(Some(s)))
       s.copy(items = s.items + (item -> TreeView(opened, updatedTree)), els = updatedEl)
   }
 
@@ -160,7 +174,6 @@ object TreeViewExample extends KorolevBlazeServer {
     */
   def childCheckboxEvent(ref: View)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
     case s: State => {
-
       val selected = ref match {
         case tv: TreeView => tv.tree.text
         case cv: ChildView => {
@@ -174,16 +187,17 @@ object TreeViewExample extends KorolevBlazeServer {
       //if ref is a tree view.
       val (treeMap, elements) = if (s.items.keySet.contains(selected)) {
         val reference@TreeView(opened, treeItem) = updateReference(s.items(selected), Some(name), isChecked).asInstanceOf[TreeView]
-        val updatedEls = s.els + (selected -> generateLI(treeItem.items, ref = selected))
-        ((selected -> reference), updatedEls)
+        val updatedEls = s.els + (selected -> generateLI(treeItem.items, ref = selected)(Some(s)))
+        (selected -> reference, updatedEls)
       } else {
         // when an item clicked is nested deeper
         val childRef = ref.asInstanceOf[ChildView]
         val selected = childRef.genealogy.head
         val reference: ChildView = updateReference(childRef, None, isChecked).asInstanceOf[ChildView]
         val (opened, updatedParentRef) = updatedDeeperItems(reference, s, selected)
-        val updatedEls = s.els + (selected -> generateLI(updatedParentRef.items, ref = selected))
-        ((selected -> TreeView(opened, updatedParentRef)), updatedEls)
+        val lis: Vector[VDom.Node] = generateLI(updatedParentRef.items, ref = selected)(Some(s))
+        val updatedEls: Map[String, Vector[VDom.Node]] = s.els + (selected -> lis)
+        (selected -> TreeView(opened, updatedParentRef), updatedEls)
       }
 
       // updated the state with the changes in checkbox value
@@ -191,6 +205,54 @@ object TreeViewExample extends KorolevBlazeServer {
     }
   }
 
+  /**
+    * Event handler when an item is selected or clicked.
+    * This will highlight the said item for distinction. Future supported
+    * behavior will be defined in this handler.
+    *
+    * @param ref - the item component view where the event originated
+    * @return
+    */
+  def itemSelectedEvent(ref: Option[View]): StateManager.Transition[State] = {
+    case state =>
+      require(ref.isDefined, "Reference should be defined.")
+      //TODO: use the id instead of value text
+      val (itemSelected, isChecked) = ref match {
+        case Some(tv: TreeView) => (tv.tree.id, tv.tree.checked)
+        case Some(cv: ChildView) => cv.item match {
+          case t: TreeItem => (t.id, t.checked)
+          case c: LeafItem => (c.id, c.checked)
+        }
+        // worst case
+        case _ => (null, false)
+      }
+      val updatedState = state.copy(itemSelected = Some(itemSelected))
+      //update the html elements highlighting the selected item
+      val (map, elements) = ref match {
+        case Some(tv: TreeView) =>
+          //parent
+          val root = tv.tree.text
+          val lis: Vector[VDom.Node] = generateLI(tv.tree.items, ref = root)(Some(updatedState))
+          val updatedEls: Map[String, Vector[VDom.Node]] = state.els + (root -> lis)
+          (root -> tv, updatedEls)
+        case Some(cv: ChildView) =>
+          val root = cv.genealogy.head
+          val (opened, updatedParentRef) = updatedDeeperItems(cv, state, root)
+          val lis: Vector[VDom.Node] = generateLI(updatedParentRef.items, ref = root)(Some(updatedState))
+          val updatedEls: Map[String, Vector[VDom.Node]] = state.els + (root -> lis)
+          (root -> TreeView(opened, updatedParentRef), updatedEls)
+        case None => (state.items.head, state.els)
+      }
+      updatedState.copy(els = elements)
+  }
+
+  /**
+    *
+    * @param reference
+    * @param name
+    * @param isChecked
+    * @return
+    */
   private def updateReference(reference: View, name: Option[String], isChecked: Boolean): View = reference match {
     case tv@TreeView(opened, treeItem) =>
       tv.copy(tree = treeItem.copy(items = treeItem.items.map {
@@ -225,14 +287,20 @@ object TreeViewExample extends KorolevBlazeServer {
   }
 
 
+  /**
+    *
+    * @param root
+    * @param child
+    * @return
+    */
   private def updateRootValue(root: TreeItem, child: Option[ChildView]): Vector[ChildView] = {
     require(child.isDefined, "Child should be defined.")
-    val childText = child.get.getText
+    val Some((childText: String, childId: UUID)) = child.map(i => (i.getText, i.getId))
     // updated the root (treeview) with the updated view
     root.items.map { old =>
       old.item match {
-        case t: TreeItem if (t.text == childText) => child.get
-        case l: LeafItem if (l.text == childText) => child.get
+        case t: TreeItem if (/*t.text == childText &&*/ childId == t.id) => child.get
+        case l: LeafItem if (/*l.text == childText &&*/ l.id == childId) => child.get
         case _ => old
       }
     }
@@ -251,8 +319,9 @@ object TreeViewExample extends KorolevBlazeServer {
       val other = s.items.filter(_._1 != selected).map(p => (p._1, p._2.copy(isOpened = false)))
       val updatedItems = (s.items ++ other) + (selected -> TreeView(!isOpened, els))
 
-      val updatedEl = s.els + (selected -> generateLI(updatedItems(selected).tree.items, ref = selected))
-      s.copy(selected = selected, items = updatedItems, els = updatedEl)
+      val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(s))
+      val updatedEl = s.els + (selected -> lis)
+      s.copy(rootSelected = selected, itemSelected = Some(target.id), items = updatedItems, els = updatedEl)
   }
 
   /**
@@ -274,8 +343,9 @@ object TreeViewExample extends KorolevBlazeServer {
       val updatedItems = updateRootValue(parentRef, updatedItem)
       val updatedTree: TreeView = tree.copy(tree = s.items(selected).tree.copy(items = updatedItems))
       val updatedState = s.items + (selected -> updatedTree)
-      val updatedEl = s.els + (selected -> generateLI(updatedState(selected).tree.items, ref = selected))
-      s.copy(items = updatedState, els = updatedEl)
+      val lis = generateLI(updatedState(selected).tree.items, ref = selected)(Some(s))
+      val updatedEl = s.els + (selected -> lis)
+      s.copy(itemSelected = Some(cv.getId), items = updatedState, els = updatedEl)
   }
 
   /**
@@ -285,30 +355,34 @@ object TreeViewExample extends KorolevBlazeServer {
     * @param state
     * @return
     */
-  def createTree(item: TreeItem, view: Option[ChildView] = None)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
-    val (isSelected, isOpened, isFound) = if (state.isDefined)
-      (item.text == state.get.selected, state.get.items(item.text).isOpened, state.get.items.contains(item.text))
-    else if (view.isDefined) (true, view.get.isOpened, false)
-    else (false, false, false)
+  def createTree(item: Option[TreeItem], view: Option[ChildView] = None)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
+    val (isSelected, isOpened) = if (state.isDefined && item.isDefined && state.get.items.contains(item.get.text)) {
+      val treeView = state.get.items(item.get.text)
+      val isSelected = state.get.itemSelected.exists(_.equals(item.get.id))
+      (isSelected, treeView.isOpened)
+    }
+    else if (view.isDefined) (state.get.itemSelected.exists(_.equals(view.get.getId)), view.get.isOpened)
+    else (false, false)
+
+    val text = if (view.isDefined) view.get.getText else item.get.text
 
     val items: Vector[VDom.Node] = for (
       el <- childrenEls
     ) yield 'li ('class /= STYLE_LIST_ITEM, el)
 
     Vector('li ('class /= STYLE_TREE_ITEM,
-      getTreeStyleClass(isSelected && isOpened, Some(item), view)(mainTreeEvent _)(nestedTreeEvent _),
+      getTreeStyleClass(isOpened, item, view)(mainTreeEvent _)(nestedTreeEvent _),
       checkbox,
       'span (
         event('click) {
           immediateTransition {
-            if (isFound) mainTreeEvent(item)
-            else {
-              nestedTreeEvent(view)
-            }
+            if (view.isDefined) itemSelectedEvent(view)
+            else itemSelectedEvent(Some(state.get.items(item.get.text)))
           }
         },
-        getStyleFor(item.text, isSelected && isOpened)
-      ), items)) // ++ items
+        getStyleFor(text, isSelected /*&& isOpened*/)
+      ), items)
+    ) // ++ items
   }
 
   val service = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
@@ -329,13 +403,15 @@ object TreeViewExample extends KorolevBlazeServer {
           'div ('class /= "treeview",
             'ul ('class /= "list-group",
               state.items.keys.flatMap { item =>
-
-                createTree(state.items(item).tree)(Some(state), {
+                // Create the root tree with/out child elements
+                createTree(Some(state.items(item).tree))(Some(state), {
                   createCheckbox(state.items, item)(parentCheckboxEvent _)
                 }, {
                   // check if the  selected item is used as a key for els in State
-                  val elements = if (state.els.filterKeys(_ == state.selected).isEmpty) Vector.empty else state.els(state.selected)
-                  getChildrenEls(item == state.selected && state.items(item).isOpened)(elements)
+                  val elements =
+                    if (state.els.filterKeys(_ == state.rootSelected).isEmpty) Vector.empty
+                    else state.els(state.rootSelected)
+                  getChildrenEls(/*item == state.selected &&*/ state.items(item).isOpened)(elements)
                 })
               }
             )
@@ -347,16 +423,16 @@ object TreeViewExample extends KorolevBlazeServer {
       ServerRouter(
         dynamic = (_, _) => Router(
           fromState = {
-            case State(tab, _, _) =>
+            case State(tab, _, _, _) =>
               Root / tab
           },
           toState = {
             case (s, Root) =>
-              val u = s.copy(selected = s.items.keys.head)
+              val u = s.copy(rootSelected = s.items.keys.head)
               Future.successful(u)
             case (s, Root / name) =>
               val key = s.items.keys.find(_.toLowerCase() == name)
-              Future.successful(key.fold(s)(k => s.copy(selected = k)))
+              Future.successful(key.fold(s)(k => s.copy(rootSelected = k)))
           }
         ),
         static = (deviceId) => Router(
@@ -366,7 +442,7 @@ object TreeViewExample extends KorolevBlazeServer {
             case (_, Root / name) =>
               storage.initial(deviceId) map { s =>
                 val key = s.items.keys.find(_.toLowerCase == name)
-                key.fold(s)(k => s.copy(selected = k))
+                key.fold(s)(k => s.copy(rootSelected = k))
               }
           }
         )
@@ -375,21 +451,13 @@ object TreeViewExample extends KorolevBlazeServer {
   )
 }
 
-
-sealed trait View2
-
-object View2 {
-
-  case class TreeView(isOpened: Boolean, node: State.TreeItem) extends View2
-
-}
-
-case class State(selected: String = State.utv01.tree.text,
+case class State(rootSelected: String = State.utv01.tree.text,
+                 itemSelected: Option[UUID] = None,
                  items: Map[String, TreeView] = Map(
                    State.utv01.tree.text -> State.utv01,
                    State.utv02.tree.text -> State.utv02,
                    State.utv03.tree.text -> State.utv03),
-                 els: Map[String, Vector[VDom.Node]] = Map())
+                 els: Map[String, Vector[VDom.Node]] = Map.empty)
 
 object View {
 
@@ -397,36 +465,36 @@ object View {
 
   sealed trait View
 
-  case class TreeView(isOpened: Boolean, tree: TreeItem) extends View
+  // configurable variables.
+  val IS_OPENED = false
+
+  case class TreeView(isOpened: Boolean = false, tree: TreeItem) extends View
 
   /**
     * isOpened is defaulted to false for non
     * tree child view (ie Leaf).
     *
     */
-  case class ChildView(isOpened: Boolean = true, item: Item, parent: Option[View]) extends View {
+  case class ChildView(isOpened: Boolean = IS_OPENED, item: Item, parent: Option[View]) extends View {
 
     // [hack] added sorting  to make more than 3 level deep work
-    lazy val genealogy: Seq[String] = (getAncestry(parent)(Seq.empty[String]) :+ getText(item)).sortBy(_.size)
+    lazy val genealogy: Seq[String] = (getAncestry(parent)(Seq.empty[String]) :+ this.getText).sortBy(_.size)
     lazy val depth = genealogy.length
 
-
-    private def getText(item: Item): String = item match {
-      case i: TreeItem => i.text
-      case l: LeafItem => l.text
-    }
-
-    def getText: String = getText(item)
-
     /**
+      * The value of the item in string type
       *
-      * @param item
       * @return
       */
-    private def isChecked(item: Item): Boolean = item match {
-      case t: TreeItem => t.checked
-      case l: LeafItem => l.checked
-    }
+    def getText: String = getValueText(item)
+
+    /**
+      * The id of the item for reference
+      *
+      * @return
+      */
+    def getId: UUID = getUUID(item)
+
 
     /**
       *
@@ -440,25 +508,47 @@ object View {
     private def getAncestry(parent: Option[View])(seq: Seq[String]): Seq[String] = if (parent.isDefined) {
       parent.get match {
         case c: ChildView =>
-          val name: String = getText(c.item)
+          // TODO: use id instead of its value text
+          val name: String = getValueText(c.item)
           getAncestry(c.parent)(seq :+ name)
         case t: TreeView => t.tree.text +: seq
       }
     } else Nil
+
+  }
+
+  /** Utility methods **/
+
+  def getValueText(item: Item): String = item match {
+    case i: TreeItem => i.text
+    case l: LeafItem => l.text
+  }
+
+  private def getUUID(item: Item): UUID = item match {
+    case i: TreeItem => i.id
+    case l: LeafItem => l.id
+  }
+
+  private def isChecked(item: Item): Boolean = item match {
+    case t: TreeItem => t.checked
+    case l: LeafItem => l.checked
   }
 
   /**
+    * Convenience method for traversing a tree with depth first
+    * traversal
     *
     * @param cv
     * @param state
     * @return
     */
   def traverse(cv: ChildView, state: State): Option[ChildView] = {
+    @tailrec
     def iter(names: Seq[String], vs: Vector[ChildView], acc: Seq[ChildView]): Seq[ChildView] = {
 
       if (names.isEmpty) return acc
 
-      val res: Option[(String, ChildView, Vector[ChildView])] = vs.map {
+      val result: Option[(String, ChildView, Vector[ChildView])] = vs.map {
         case c: ChildView => c.item match {
           case l: LeafItem => (l.text, c, Vector.empty[ChildView])
           case t: TreeItem => (t.text, c, t.items)
@@ -466,8 +556,8 @@ object View {
       }.filter { case (n, _, _) => n == names.head }.headOption
 
       // visit node by depth
-      if (res.isDefined) {
-        val (_, curr, children) = res.get
+      if (result.isDefined) {
+        val (_, curr, children) = result.get
         (curr.getText == cv.getText) match {
           case true => iter(names.tail, children, acc :+ cv)
           case _ => iter(names.tail, children, acc :+ curr)
@@ -490,7 +580,6 @@ object View {
               val up: Vector[ChildView] = t.items.map { sub =>
                 if (sub.getText == result.get.getText) result.get else sub
               }
-              //              val pState = !(t.items.count(_.getCheckedValue == false) > 0)
               i.copy(item = t.copy(/*checked = pState,*/ items = up))
             case l: LeafItem if (l.text == result.get.getText) =>
               i.copy(item = result.get.item)
@@ -509,8 +598,8 @@ object View {
       case h :: tail => (h, tail)
     }
 
-    //    println(s"GENEALOGY ${cv.genealogy}")
-    //    println("-----------------------------")
+    println(s"GENEALOGY ${cv.genealogy}")
+    println("-----------------------------")
     val accumulated = iter(remains, state.items(root).tree.items, Seq.empty[ChildView])
 
     // updated view
@@ -518,14 +607,19 @@ object View {
   }
 }
 
+
+/** ** Initialize state values and model definition ** **/
 object State {
   val effects = Effects[Future, State, Any]
 
   sealed trait Item
 
-  case class TreeItem(text: String, checked: Boolean = false, items: Vector[ChildView] = Vector.empty) extends Item
+  case class TreeItem(text: String, checked: Boolean = false,
+                      items: Vector[ChildView] = Vector.empty, id: UUID = UUID.randomUUID()) extends Item
 
-  case class LeafItem(text: String, checked: Boolean = false) extends Item
+  case class LeafItem(text: String,
+                      checked: Boolean = false,
+                      id: UUID = UUID.randomUUID()) extends Item
 
   object Item {
     def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = {
@@ -542,7 +636,7 @@ object State {
           val item = i.item.asInstanceOf[TreeItem]
           val up = item.copy(items = Vector(cv.get))
           val upV = i.copy(item = up)
-          val withParent = cv.get.copy(parent = Some(upV))
+          //          val withParent = cv.get.copy(parent = Some(upV))
 
           Some(i.copy(item = up))
         }
