@@ -1,7 +1,11 @@
+
+import Item.TreeItem
+import View.TreeView
 import korolev._
 import korolev.blazeServer._
 import korolev.execution._
 import korolev.server._
+import org.http4s.blaze.http
 
 import scala.concurrent.Future
 
@@ -11,10 +15,8 @@ object TreeViewExample extends KorolevBlazeServer {
 
   // Handler to input
   val inputId: Effects.ElementId = elementId
-  val storage: StateStorage[Future, TreeViewState] = StateStorage.default[Future, TreeViewState](TreeViewState())
-
-
-  val service = blazeService[Future, TreeViewState, Any] from KorolevServiceConfig[Future, TreeViewState, Any](
+  val storage: StateStorage[Future, TreeViewState] = StateStorage.default[Future, TreeViewState](Init.default)
+  val service: http.HttpService = blazeService[Future, TreeViewState, Any] from KorolevServiceConfig[Future, TreeViewState, Any](
     stateStorage = storage,
     head = 'head (
       'title ("Simple Treeview Page"),
@@ -29,23 +31,9 @@ object TreeViewExample extends KorolevBlazeServer {
     render = {
       case state =>
         'body (
-          //TODO: add Treeview component here
-          /* 'div ('class /= "treeview",
-             'ul ('class /= "list-group",
-               state.items.keys.flatMap { item =>
-                 // Create the root tree with/out child elements
-                 createTree(Some(state.items(item).tree))(Some(state), {
-                   createCheckbox(state.items, item)(parentCheckboxEvent _)
-                 }, {
-                   // check if the  selected item is used as a key for els in State
-                   val elements =
-                     if (state.els.filterKeys(_ == state.rootSelected).isEmpty) Vector.empty
-                     else state.els(state.rootSelected)
-                   getChildrenEls(/*item == state.selected &&*/ state.items(item).isOpened)(elements)
-                 })
-               }
-             )
-           )*/
+          // Generates the Virtual Node DOM for tree component with
+          // state as the input
+          TreeViewComponent(state)
         )
     }
     ,
@@ -79,23 +67,27 @@ object TreeViewExample extends KorolevBlazeServer {
       )
     }
   )
+}
+
+object Init {
+
 
   // sample test instances
-  //val defaultName = "Tree1"
-  //val secondName = "Tree2"
-  //val thirdName = "Tree3"
+  val defaultName = "Tree1"
+  val secondName = "Tree2"
+  val thirdName = "Tree3"
 
-  //val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty)
-  //val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
-  //val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
+  val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty)
+  val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
+  val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
 
-  //val tv01: TreeView = TreeView(false, ti01)
-  //val tv02: TreeView = TreeView(false, ti02)
-  //val tv03: TreeView = TreeView(false, ti03)
-
-  //val children01 = Item(3, Some(tv01))
-  //val children02 = Item(7, Some(tv02))
-  //val children03 = Item(10, Some(tv03))
+  val tv01: TreeView = TreeView(false, ti01)
+  val tv02: TreeView = TreeView(false, ti02)
+  val tv03: TreeView = TreeView(false, ti03)
+  //
+  val children01 = Item(3, Some(tv01))
+  val children02 = Item(7, Some(tv02))
+  val children03 = Item(10, Some(tv03))
 
   /*
     val d01 = childTree(1, Some(tv01))
@@ -135,15 +127,17 @@ object TreeViewExample extends KorolevBlazeServer {
     })
   */
   // added children to tree items
-  //val utv01: TreeView = tv01.copy(tree = ti01.copy(items = children01 /*:+ fd01*/))
-  //val utv02: TreeView = tv02.copy(tree = ti02.copy(items = children02))
-  //val utv03: TreeView = tv03.copy(tree = ti03.copy(items = children03))
+  val utv01: TreeView = tv01.copy(tree = ti01.copy(items = children01 /*:+ fd01*/))
+  val utv02: TreeView = tv02.copy(tree = ti02.copy(items = children02))
+  val utv03: TreeView = tv03.copy(tree = ti03.copy(items = children03))
 
-  // test..
-  //  utv02.tree.items.foreach { cv =>
-  //    cv.item match {
-  //      case t: TreeItem => t.items.foreach(i => println(s">>> ${i.genealogy} with depth[${i.depth}]"))
-  //      case _ => println(s">>> ${cv.genealogy} with depth[${cv.depth}]")
-  //    }
-  //  }
+  // The default state for the tree view component.
+  val default =
+    TreeViewState(utv01.tree.text,
+      itemSelected = None,
+      items = Map(
+        utv01.tree.text -> utv01,
+        utv02.tree.text -> utv02,
+        utv03.tree.text -> utv03),
+      els = Map.empty)
 }

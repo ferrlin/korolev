@@ -13,10 +13,8 @@ object TreeViewComponent {
 
   val TREE_STYLE_PLUS = "icon expand-icon glyphicon glyphicon-plus"
   val TREE_STYLE_MINUS = "icon expand-icon glyphicon glyphicon-minus"
-
   val STYLE_CHECKED = "icon check-icon glyphicon glyphicon-check"
   val STYLE_UNCHECKED = "icon check-icon glyphicon glyphicon-unchecked"
-
   val STYLE_LIST_ITEM = "list-group-item node-treeview-checkable"
   val STYLE_TREE_ITEM = "list-group-item node-treeview-checkable"
 
@@ -98,9 +96,9 @@ object TreeViewComponent {
 
   /**
     *
-    * @param reference
-    * @param name
-    * @param isChecked
+    * @param reference - targeted view instance
+    * @param name      - the text values of view included
+    * @param isChecked - flag variable
     * @return
     */
   private def updateReference(reference: View, name: Option[String], isChecked: Boolean): View = reference match {
@@ -156,8 +154,13 @@ object TreeViewComponent {
     }
   }
 
-
-  def apply(state: TreeViewState): TreeViewComponent = ???
+  /**
+    * Extractor of component to generate the virtual DOM node instance.
+    *
+    * @param state
+    * @return
+    */
+  def apply(state: TreeViewState): VDom.Node = new TreeViewComponent().render(state)
 }
 
 class TreeViewComponent {
@@ -383,7 +386,29 @@ class TreeViewComponent {
       updatedState.copy(els = elements)
   }
 
-
-  def render = ???
+  /**
+    * Render the component to it's Virtual DOM  Node instance.
+    *
+    * @return
+    */
+  def render: Render[TreeViewState] = {
+    case state =>
+      'div ('class /= "treeview",
+        'ul ('class /= "list-group",
+          state.items.keys.flatMap { item =>
+            // Create the root tree with/out child elements
+            createTree(Some(state.items(item).tree))(Some(state), {
+              createCheckbox(state.items, item)(parentCheckboxEvent _)
+            }, {
+              // check if the  selected item is used as a key for els in State
+              val elements =
+                if (state.els.filterKeys(_ == state.rootSelected).isEmpty) Vector.empty
+                else state.els(state.rootSelected)
+              getChildrenEls(/*item == state.selected &&*/ state.items(item).isOpened)(elements)
+            })
+          }
+        )
+      )
+  }
 }
 
