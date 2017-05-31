@@ -9,6 +9,13 @@ import scala.concurrent.Future
 /**
   * Created by jferrolino on 28/5/17.
   */
+
+case class State(treeViewState: TreeViewState) { }
+
+object State {
+  val effects: Effects[Future, State, Any] = Effects[Future, State, Any]
+}
+
 case class TreeViewState(rootSelected: String,
                          itemSelected: Option[UUID] = None,
                          items: Map[String, TreeView],
@@ -16,7 +23,7 @@ case class TreeViewState(rootSelected: String,
 
 object TreeViewState {
 
-  val effects: Effects[Future, TreeViewState, Any] = Effects[Future, TreeViewState, Any]
+  //val effects: Effects[Future, TreeViewState, Any] = Effects[Future, TreeViewState, Any]
 
   def apply(): TreeViewState = TreeViewState()
 }

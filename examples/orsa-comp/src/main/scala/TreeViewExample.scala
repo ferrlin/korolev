@@ -11,12 +11,12 @@ import scala.concurrent.Future
 
 object TreeViewExample extends KorolevBlazeServer {
 
-  import TreeViewState.effects._
+  import State.effects._
 
   // Handler to input
   val inputId: Effects.ElementId = elementId
-  val storage: StateStorage[Future, TreeViewState] = StateStorage.default[Future, TreeViewState](Init.default)
-  val service: http.HttpService = blazeService[Future, TreeViewState, Any] from KorolevServiceConfig[Future, TreeViewState, Any](
+  val storage: StateStorage[Future, State] = StateStorage.default[Future, State](State(Init.default))
+  val service: http.HttpService = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
     stateStorage = storage,
     head = 'head (
       'title ("Simple Treeview Page"),
@@ -41,16 +41,24 @@ object TreeViewExample extends KorolevBlazeServer {
       ServerRouter(
         dynamic = (_, _) => Router(
           fromState = {
-            case TreeViewState(tab, _, _, _) =>
-              Root / tab
+            case State(tree) =>
+              Root / tree.rootSelected
           },
           toState = {
-            case (s, Root) =>
-              val u = s.copy(rootSelected = s.items.keys.head)
+            case (s, Root) => {
+              val u = s.copy(treeViewState = s.treeViewState.copy(rootSelected = s.treeViewState.items.keys.head))
               Future.successful(u)
-            case (s, Root / name) =>
-              val key = s.items.keys.find(_.toLowerCase() == name)
-              Future.successful(key.fold(s)(k => s.copy(rootSelected = k)))
+            }
+            case (s, Root / name) => {
+              val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
+              val result = if (key.isDefined)
+                s.copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
+              else s
+
+              //key.fold(s)(k => s.copy(rootSelected = k))
+
+              Future.successful(result)
+            }
           }
         ),
         static = (deviceId) => Router(
@@ -58,9 +66,16 @@ object TreeViewExample extends KorolevBlazeServer {
             case (_, Root) =>
               storage.initial(deviceId)
             case (_, Root / name) =>
-              storage.initial(deviceId) map { s =>
-                val key = s.items.keys.find(_.toLowerCase == name)
-                key.fold(s)(k => s.copy(rootSelected = k))
+              storage.initial(deviceId) map { s => {
+                val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
+                val result = if (key.isDefined)
+                  s.copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
+                else s
+
+                //key.fold(s)(k => s.copy(rootSelected = k))
+
+               result
+              }
               }
           }
         )
