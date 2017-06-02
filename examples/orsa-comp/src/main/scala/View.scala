@@ -4,10 +4,6 @@ import Item.{Item, LeafItem, TreeItem}
 
 import scala.annotation.tailrec
 
-/**
-  * Created by jferrolino on 28/5/17.
-  */
-
 object View {
 
   val IS_OPENED = false

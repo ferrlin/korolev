@@ -4,9 +4,6 @@ import Item.{Item, LeafItem, TreeItem}
 import View.{ChildView, TreeView, View, traverse}
 import korolev._
 
-/**
-  * Created by jferrolino on 28/5/17.
-  */
 object TreeViewComponent {
 
   import State.effects._
@@ -17,6 +14,7 @@ object TreeViewComponent {
   val STYLE_UNCHECKED = "icon check-icon glyphicon glyphicon-unchecked"
   val STYLE_LIST_ITEM = "list-group-item node-treeview-checkable"
   val STYLE_TREE_ITEM = "list-group-item node-treeview-checkable"
+  val STYLE_TREE_TOP_LEVEL_ITEM = "parent-tree col-sm-3 list-group-item node-treeview-checkable"
 
   /**
     * Tree element style when clicked/unclicked (ie '-' or '+')
@@ -77,7 +75,7 @@ object TreeViewComponent {
   }
 
   def getChildrenEls(isSelected: Boolean)(els: Vector[VDom.Node]): Vector[VDom.Node] =
-    if (isSelected && els.nonEmpty) els else Vector.empty[VDom.Node]
+    if (/*isSelected && */els.nonEmpty) els else Vector.empty[VDom.Node]
 
   /**
     * Recursively updates the checkbox value.
@@ -179,8 +177,8 @@ class TreeViewComponent {
       val TreeView(isOpened, els) = s.treeViewState.items(selected)
 
       // reset other 'opened' state to false
-      val other = s.treeViewState.items.filter(_._1 != selected).map(p => (p._1, p._2.copy(isOpened = false)))
-      val updatedItems = (s.treeViewState.items ++ other) + (selected -> TreeView(!isOpened, els))
+      val other = s.treeViewState.items.filter(_._1 != selected) //.map(p => (p._1, p._2.copy(isOpened = false)))
+    val updatedItems = (s.treeViewState.items ++ other) + (selected -> TreeView(!isOpened, els))
 
       val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(s))
       val updatedEl = s.treeViewState.els + (selected -> lis)
@@ -219,7 +217,7 @@ class TreeViewComponent {
     * @param state - reference to the state of the compoment
     * @return
     */
-  def createTree(item: Option[TreeItem], view: Option[ChildView] = None)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
+  def createTree(item: Option[TreeItem], view: Option[ChildView] = None, isTopLevelTree: Boolean = false)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
     val (isSelected, isOpened, text) = if (state.isDefined && item.isDefined && state.get.treeViewState.items.contains(item.get.text)) {
       val treeView = state.get.treeViewState.items(item.get.text)
       val isSelected = state.get.treeViewState.itemSelected.exists(_.equals(item.get.id))
@@ -235,7 +233,7 @@ class TreeViewComponent {
       el <- childrenEls
     ) yield 'li ('class /= STYLE_LIST_ITEM, 'node /= "1", el)
 
-    Vector('li ('class /= STYLE_TREE_ITEM,
+    Vector('li ('class /= { if (isTopLevelTree) STYLE_TREE_TOP_LEVEL_ITEM else STYLE_TREE_ITEM },
       getTreeStyleClass(isOpened, item, view)(mainTreeEventHandler _)(nestedTreeEventHandler _),
       checkbox,
       'span (
@@ -397,13 +395,13 @@ class TreeViewComponent {
         'ul ('class /= "list-group",
           state.treeViewState.items.keys.flatMap { item =>
             // Create the root tree with/out child elements
-            createTree(Some(state.treeViewState.items(item).tree))(Some(state), {
+            createTree(Some(state.treeViewState.items(item).tree), None, true)(Some(state), {
               createCheckbox(state.treeViewState.items, item)(parentCheckboxEvent _)
             }, {
               // check if the  selected item is used as a key for els in State
-              val elements =
-                if (state.treeViewState.els.filterKeys(_ == state.treeViewState.rootSelected).isEmpty) Vector.empty
-                else state.treeViewState.els(state.treeViewState.rootSelected)
+              val elements = if (state.treeViewState.els.contains(item)) state.treeViewState.els(item) else Vector.empty
+              //if (state.treeViewState.els.filterKeys(_ == state.treeViewState.rootSelected).isEmpty) Vector.empty
+              //else
               getChildrenEls(/*item == state.selected &&*/ state.treeViewState.items(item).isOpened)(elements)
             })
           }
@@ -411,4 +409,5 @@ class TreeViewComponent {
       )
   }
 }
+
 
