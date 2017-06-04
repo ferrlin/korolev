@@ -3,8 +3,6 @@ import java.util.UUID
 import Item.{Item, LeafItem, TreeItem}
 import View.{ChildView, TreeView, View, traverse}
 import korolev._
-
-import scala.concurrent.Future
 import scala.concurrent.duration._
 
 object TreeViewComponent {
@@ -18,6 +16,8 @@ object TreeViewComponent {
   val STYLE_LIST_ITEM = "list-group-item node-treeview-checkable"
   val STYLE_TREE_ITEM = "list-group-item node-treeview-checkable"
   val STYLE_TREE_TOP_LEVEL_ITEM = "parent-tree col-sm-3 list-group-item node-treeview-checkable"
+
+  val INITIAL_MESSAGE = "Please wait.. Initializing component"
 
   /**
     * Tree element style when clicked/unclicked (ie '-' or '+')
@@ -412,18 +412,15 @@ class TreeViewComponent {
       updatedState.copy(treeViewState = updatedState.treeViewState.copy(els = elements))
   }
 
-  def tempHandler(item: TreeItem): StateManager.Transition[Execute] = {
+  def onLoadHandler(item: TreeItem): StateManager.Transition[Initialize] = {
     case inside =>
       val selected = item.text
-      val TreeView(isOpened, el) = inside.treeViewState.items(selected)
+      val tree@TreeView(isOpened, el) = inside.treeViewState.items(selected)
 
-      // reset other 'opened' state to false
       val other = inside.treeViewState.items.filter(_._1 != selected)
-      /*.map(p => (p._1, p._2.copy(isOpened = false)))*/
-      val toggle = isOpened
-      val updatedItems = (inside.treeViewState.items /*++ other*/) + (selected -> TreeView(toggle, el))
+      val updatedItems = (inside.treeViewState.items ++ other) + (selected -> tree)
 
-      val lis = generateLI(updatedItems(selected).tree.items, toggle, ref = selected)(Some(inside))
+      val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(inside))
       val updatedEl = inside.treeViewState.els + (selected -> lis)
       inside.copy(treeViewState = inside.treeViewState.copy(els = updatedEl))
   }
@@ -435,43 +432,25 @@ class TreeViewComponent {
     */
   def render: Render[State] = {
     case inside@Initialize(treeState) => 'body (
-      delay(1.second) { case _ =>
-        //        println("UPDATING STATE")
+      delay(100.millisecond) { case _ =>
         Execute({
           val updatedState = treeState.items.values.foldLeft(inside) { (currState, view) =>
-            if (view.isOpened) {
-              //              println("Start Initializing")
-              val selected = view.tree.text
-              val tree@TreeView(isOpened, el) = treeState.items(selected)
-
-              // reset other 'opened' state to false
-              val other = currState.treeViewState.items.filter(_._1 != selected)
-              val updatedItems = (currState.treeViewState.items ++ other) + (selected -> tree)
-
-              //              println("Generate LIST at initialization")
-              val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(inside))
-              val updatedEl = currState.treeViewState.els + (selected -> lis)
-              //              println("Update State at Initialization")
-              currState.copy(treeViewState = currState.treeViewState.copy(els = updatedEl))
-            }
-            else currState
+            if (view.isOpened) onLoadHandler(view.tree)(currState) else currState
           }
+          // return the updated tree state
           updatedState.treeViewState
         })
       },
-
-      "Initializing ...")
+      INITIAL_MESSAGE)
     case state@Execute(treeState) =>
       'div ('class /= "treeview",
         'ul ('class /= "list-group",
           treeState.items.keys.flatMap { item =>
-            // Create the root tree with/out child elements
             createTree(Some(treeState.items(item).tree), isTopLevelTree = true)(Some(state), {
               createCheckbox(treeState.items, item)(parentCheckboxEvent _)
             }, {
               // check if the  selected item is used as a key for els in State
-              val elements = if (treeState.els.contains(item)) treeState.els(item)
-              else Vector.empty
+              val elements = if (treeState.els.contains(item)) treeState.els(item) else Vector.empty
               getChildrenEls(treeState.items(item).isOpened)(elements)
             })
           }

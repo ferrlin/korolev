@@ -35,58 +35,7 @@ object TreeViewExample extends KorolevBlazeServer {
           // state as the input
           TreeViewComponent(state)
         )
-    }
-    ,
-    serverRouter = ServerRouter.empty
-    //{
-    /*ServerRouter(
-      dynamic = (_, _) => Router(
-        fromState = {
-          case Initialize(tree) =>
-            Root / tree.itemSelected.get.toString
-          case Execute(tree) =>
-            Root / tree.itemSelected.get.toString /*tree.rootSelected*/
-        },
-        toState = {
-          case (s, Root) => {
-            //              val u = s.copy(treeViewState = s.treeViewState.copy(rootSelected = s.treeViewState.items.keys.head))
-            Future.successful(s)
-          }
-          case (s, Root / name) => {
-            //              val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
-            //              val result = if (key.isDefined)
-            //              s //.copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
-            //              s
-
-            //key.fold(s)(k => s.copy(rootSelected = k))
-
-            //              Future.successful(s /*result*/)
-            Future.successful(s)
-          }
-        }
-      ),
-      static = (deviceId) => Router(
-        toState = {
-          case (_, Root) =>
-            storage.initial(deviceId)
-          case (_, Root / name) =>
-            storage.initial(deviceId) map {
-              s => {
-                //                val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
-                //                val result = if (key.isDefined)
-                //                s .copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
-                //                else s
-
-                //key.fold(s)(k => s.copy(rootSelected = k))
-
-                //                result
-                s
-              }
-            }
-        }
-      )
-    )
-  }*/
+    }, serverRouter = ServerRouter.empty
   )
 }
 
@@ -102,9 +51,9 @@ object Init {
   val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
   val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
 
-  val tv01: TreeView = TreeView(false, ti01)
+  val tv01: TreeView = TreeView(true, ti01)
   val tv02: TreeView = TreeView(true, ti02)
-  val tv03: TreeView = TreeView(false, ti03)
+  val tv03: TreeView = TreeView(true, ti03)
   //
   val children01 = Item(3, Some(tv01))
   val children02 = Item(7, Some(tv02))
