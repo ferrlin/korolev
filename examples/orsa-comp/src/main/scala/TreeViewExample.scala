@@ -102,8 +102,8 @@ object Init {
   val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
   val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
 
-  val tv01: TreeView = TreeView(true, ti01)
-  val tv02: TreeView = TreeView(false, ti02)
+  val tv01: TreeView = TreeView(false, ti01)
+  val tv02: TreeView = TreeView(true, ti02)
   val tv03: TreeView = TreeView(false, ti03)
   //
   val children01 = Item(3, Some(tv01))

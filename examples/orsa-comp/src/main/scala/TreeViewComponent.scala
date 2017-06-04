@@ -436,23 +436,22 @@ class TreeViewComponent {
   def render: Render[State] = {
     case inside@Initialize(treeState) => 'body (
       delay(1.second) { case _ =>
-        println("UPDATING STATE")
+        //        println("UPDATING STATE")
         Execute({
           val updatedState = treeState.items.values.foldLeft(inside) { (currState, view) =>
             if (view.isOpened) {
-              println("Start Initializing")
+              //              println("Start Initializing")
               val selected = view.tree.text
               val tree@TreeView(isOpened, el) = treeState.items(selected)
 
               // reset other 'opened' state to false
-              val other = inside.treeViewState.items.filter(_._1 != selected)
-              /*.map(p => (p._1, p._2.copy(isOpened = false)))*/
-              val updatedItems = (treeState.items ++ other) + (selected -> tree)
+              val other = currState.treeViewState.items.filter(_._1 != selected)
+              val updatedItems = (currState.treeViewState.items ++ other) + (selected -> tree)
 
-              println("Generate LIST at initialization")
+              //              println("Generate LIST at initialization")
               val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(inside))
-              val updatedEl = treeState.els + (selected -> lis)
-              println("Update State at Initialization")
+              val updatedEl = currState.treeViewState.els + (selected -> lis)
+              //              println("Update State at Initialization")
               currState.copy(treeViewState = currState.treeViewState.copy(els = updatedEl))
             }
             else currState
