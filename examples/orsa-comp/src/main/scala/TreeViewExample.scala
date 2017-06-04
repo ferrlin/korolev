@@ -15,7 +15,7 @@ object TreeViewExample extends KorolevBlazeServer {
 
   // Handler to input
   val inputId: Effects.ElementId = elementId
-  val storage: StateStorage[Future, State] = StateStorage.default[Future, State](State(Init.default))
+  val storage: StateStorage[Future, State] = StateStorage.default[Future, State](Initialize(Init.default))
   val service: http.HttpService = blazeService[Future, State, Any] from KorolevServiceConfig[Future, State, Any](
     stateStorage = storage,
     head = 'head (
@@ -37,50 +37,56 @@ object TreeViewExample extends KorolevBlazeServer {
         )
     }
     ,
-    serverRouter = {
-      ServerRouter(
-        dynamic = (_, _) => Router(
-          fromState = {
-            case State(tree) =>
-              Root / tree.rootSelected
-          },
-          toState = {
-            case (s, Root) => {
-              val u = s.copy(treeViewState = s.treeViewState.copy(rootSelected = s.treeViewState.items.keys.head))
-              Future.successful(u)
-            }
-            case (s, Root / name) => {
-              val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
-              val result = if (key.isDefined)
-                s.copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
-              else s
-
-              //key.fold(s)(k => s.copy(rootSelected = k))
-
-              Future.successful(result)
-            }
+    serverRouter = ServerRouter.empty
+    //{
+    /*ServerRouter(
+      dynamic = (_, _) => Router(
+        fromState = {
+          case Initialize(tree) =>
+            Root / tree.itemSelected.get.toString
+          case Execute(tree) =>
+            Root / tree.itemSelected.get.toString /*tree.rootSelected*/
+        },
+        toState = {
+          case (s, Root) => {
+            //              val u = s.copy(treeViewState = s.treeViewState.copy(rootSelected = s.treeViewState.items.keys.head))
+            Future.successful(s)
           }
-        ),
-        static = (deviceId) => Router(
-          toState = {
-            case (_, Root) =>
-              storage.initial(deviceId)
-            case (_, Root / name) =>
-              storage.initial(deviceId) map { s => {
-                val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
-                val result = if (key.isDefined)
-                  s.copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
-                else s
+          case (s, Root / name) => {
+            //              val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
+            //              val result = if (key.isDefined)
+            //              s //.copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
+            //              s
+
+            //key.fold(s)(k => s.copy(rootSelected = k))
+
+            //              Future.successful(s /*result*/)
+            Future.successful(s)
+          }
+        }
+      ),
+      static = (deviceId) => Router(
+        toState = {
+          case (_, Root) =>
+            storage.initial(deviceId)
+          case (_, Root / name) =>
+            storage.initial(deviceId) map {
+              s => {
+                //                val key = s.treeViewState.items.keys.find(_.toLowerCase() == name)
+                //                val result = if (key.isDefined)
+                //                s .copy(treeViewState = s.treeViewState.copy(rootSelected = key.get))
+                //                else s
 
                 //key.fold(s)(k => s.copy(rootSelected = k))
 
-               result
+                //                result
+                s
               }
-              }
-          }
-        )
+            }
+        }
       )
-    }
+    )
+  }*/
   )
 }
 
@@ -96,7 +102,7 @@ object Init {
   val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
   val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
 
-  val tv01: TreeView = TreeView(false, ti01)
+  val tv01: TreeView = TreeView(true, ti01)
   val tv02: TreeView = TreeView(false, ti02)
   val tv03: TreeView = TreeView(false, ti03)
   //
@@ -148,7 +154,7 @@ object Init {
 
   // The default state for the tree view component.
   val default =
-    TreeViewState(utv01.tree.text,
+    TreeViewState(/*utv01.tree.text,*/
       itemSelected = None,
       items = Map(
         utv01.tree.text -> utv01,

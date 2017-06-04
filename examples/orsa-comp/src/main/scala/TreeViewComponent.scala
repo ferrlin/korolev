@@ -4,6 +4,9 @@ import Item.{Item, LeafItem, TreeItem}
 import View.{ChildView, TreeView, View, traverse}
 import korolev._
 
+import scala.concurrent.Future
+import scala.concurrent.duration._
+
 object TreeViewComponent {
 
   import State.effects._
@@ -75,7 +78,7 @@ object TreeViewComponent {
   }
 
   def getChildrenEls(isSelected: Boolean)(els: Vector[VDom.Node]): Vector[VDom.Node] =
-    if (/*isSelected && */els.nonEmpty) els else Vector.empty[VDom.Node]
+    if ( /*isSelected && */ els.nonEmpty) els else Vector.empty[VDom.Node]
 
   /**
     * Recursively updates the checkbox value.
@@ -172,18 +175,21 @@ class TreeViewComponent {
     * @return
     */
   def mainTreeEventHandler(target: TreeItem): StateManager.Transition[State] = {
-    case s =>
+    case s: Execute =>
       val selected = target.text
-      val TreeView(isOpened, els) = s.treeViewState.items(selected)
+      val TreeView(isOpened, el) = s.treeViewState.items(selected)
 
       // reset other 'opened' state to false
-      val other = s.treeViewState.items.filter(_._1 != selected) //.map(p => (p._1, p._2.copy(isOpened = false)))
-    val updatedItems = (s.treeViewState.items ++ other) + (selected -> TreeView(!isOpened, els))
+      val other = s.treeViewState.items.filter(_._1 != selected)
+      /*.map(p => (p._1, p._2.copy(isOpened = false)))*/
+      val toggle = !isOpened
+      val updatedItems = (s.treeViewState.items /*++ other*/) + (selected -> TreeView(toggle, el))
 
-      val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(s))
+      val lis = generateLI(updatedItems(selected).tree.items, toggle, ref = selected)(Some(s))
       val updatedEl = s.treeViewState.els + (selected -> lis)
-      s.copy(treeViewState = s.treeViewState.copy(rootSelected = selected, itemSelected = Some(target.id), items = updatedItems, els = updatedEl))
+      s.copy(treeViewState = s.treeViewState.copy(itemSelected = Some(target.id), items = updatedItems, els = updatedEl))
   }
+
 
   /**
     * Event handler for nested tree
@@ -191,7 +197,7 @@ class TreeViewComponent {
     * @return
     */
   def nestedTreeEventHandler(target: Option[ChildView]): StateManager.Transition[State] = {
-    case s =>
+    case s: Execute =>
       val cv = target.get
 
       val toggle = !cv.isOpened
@@ -212,19 +218,36 @@ class TreeViewComponent {
   /**
     * Creates the tree item with its event handling feature.
     *
-    * @param item  -  tree item used for creating root tree view
-    * @param view  - for nested tree
-    * @param state - reference to the state of the compoment
+    * @param item -  tree item used for creating root tree view
+    * @param view - for nested tree
     * @return
     */
   def createTree(item: Option[TreeItem], view: Option[ChildView] = None, isTopLevelTree: Boolean = false)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
-    val (isSelected, isOpened, text) = if (state.isDefined && item.isDefined && state.get.treeViewState.items.contains(item.get.text)) {
-      val treeView = state.get.treeViewState.items(item.get.text)
-      val isSelected = state.get.treeViewState.itemSelected.exists(_.equals(item.get.id))
+
+    //    val state = someState.map(s => if (s.isInstanceOf[Execute]) s.asInstanceOf[Execute] else s.asInstanceOf[Initialize])
+    val treeState: Option[TreeViewState] = state.map(_ match {
+      case e: Execute => e.treeViewState
+      case i: Initialize => i.treeViewState
+    })
+    val (isSelected, isOpened, text) = if (state.isDefined && item.isDefined && treeState.isDefined && treeState.get.items.contains(item.get.text)) {
+
+      //      val curr = state.get.treeViewState.items(item.get.text)
+      //      val updated = transition {
+      //        println(s"TRANSITION called");
+      //      TODO: fix
+      //      this
+      //        mainTreeEventHandler(curr.tree)
+      //      }(state.get)
+      //
+      //      val isEmpty = updated.treeViewState.els.isEmpty
+      //      if (!isEmpty) newChildrenEls = updated.treeViewState.els(curr.tree.text)
+
+      val treeView = treeState.get.items(item.get.text)
+      val isSelected = treeState.get.itemSelected.exists(_.equals(item.get.id))
       (isSelected, treeView.isOpened, item.get.text)
     }
     else if (view.isDefined) {
-      val isSelected = state.get.treeViewState.itemSelected.exists(_.equals(view.get.getId))
+      val isSelected = treeState.get.itemSelected.exists(_.equals(view.get.getId))
       (isSelected, view.get.isOpened, view.get.getText)
     }
     else (false, false, "")
@@ -233,14 +256,16 @@ class TreeViewComponent {
       el <- childrenEls
     ) yield 'li ('class /= STYLE_LIST_ITEM, 'node /= "1", el)
 
-    Vector('li ('class /= { if (isTopLevelTree) STYLE_TREE_TOP_LEVEL_ITEM else STYLE_TREE_ITEM },
+    Vector('li ('class /= {
+      if (isTopLevelTree) STYLE_TREE_TOP_LEVEL_ITEM else STYLE_TREE_ITEM
+    },
       getTreeStyleClass(isOpened, item, view)(mainTreeEventHandler _)(nestedTreeEventHandler _),
       checkbox,
       'span (
         event('click, EventPhase.Bubbling) {
           immediateTransition {
             if (view.isDefined) itemSelectedEventHandler(view)
-            else itemSelectedEventHandler(Some(state.get.treeViewState.items(text)))
+            else itemSelectedEventHandler(Some(treeState.get.items(text)))
           }
         }, getStyleFor(text, isSelected /*&& isOpened*/)),
       items)
@@ -258,7 +283,8 @@ class TreeViewComponent {
           createCheckbox(item, ref)(childCheckboxEvent(child) _), {
             val isSelected = state match {
               case None => false
-              case Some(s) => s.treeViewState.itemSelected.exists(_.equals(item.id))
+              case Some(s: Initialize) => s.treeViewState.itemSelected.exists(_.equals(item.id))
+              case Some(s: Execute) => s.treeViewState.itemSelected.exists(_.equals(item.id))
             }
             'span (
               event('click, EventPhase.Bubbling) {
@@ -285,7 +311,7 @@ class TreeViewComponent {
     * @return
     */
   def parentCheckboxEvent(item: String): StateManager.Transition[State] = {
-    case s =>
+    case s: Execute =>
       val TreeView(opened, ref) = s.treeViewState.items(item)
       val updatedStatus = !ref.checked
       val updatedChildren = ref.items.map {
@@ -308,7 +334,8 @@ class TreeViewComponent {
     * @return
     */
   def childCheckboxEvent(ref: View)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
-    case s: State => {
+    case i: Initialize => i
+    case s: Execute => {
       val selected = ref match {
         case tv: TreeView => tv.tree.text
         case cv: ChildView => {
@@ -349,7 +376,8 @@ class TreeViewComponent {
     * @return
     */
   def itemSelectedEventHandler(ref: Option[View]): StateManager.Transition[State] = {
-    case state =>
+    case i: Initialize => i
+    case state: Execute =>
       require(ref.isDefined, "Reference should be defined.")
       //TODO: use the id instead of value text
       val (itemSelected, isChecked) = ref match {
@@ -384,25 +412,68 @@ class TreeViewComponent {
       updatedState.copy(treeViewState = updatedState.treeViewState.copy(els = elements))
   }
 
+  def tempHandler(item: TreeItem): StateManager.Transition[Execute] = {
+    case inside =>
+      val selected = item.text
+      val TreeView(isOpened, el) = inside.treeViewState.items(selected)
+
+      // reset other 'opened' state to false
+      val other = inside.treeViewState.items.filter(_._1 != selected)
+      /*.map(p => (p._1, p._2.copy(isOpened = false)))*/
+      val toggle = isOpened
+      val updatedItems = (inside.treeViewState.items /*++ other*/) + (selected -> TreeView(toggle, el))
+
+      val lis = generateLI(updatedItems(selected).tree.items, toggle, ref = selected)(Some(inside))
+      val updatedEl = inside.treeViewState.els + (selected -> lis)
+      inside.copy(treeViewState = inside.treeViewState.copy(els = updatedEl))
+  }
+
   /**
     * Render the component to it's Virtual DOM  Node instance.
     *
     * @return
     */
   def render: Render[State] = {
-    case state =>
+    case inside@Initialize(treeState) => 'body (
+      delay(1.second) { case _ =>
+        println("UPDATING STATE")
+        Execute({
+          val updatedState = treeState.items.values.foldLeft(inside) { (currState, view) =>
+            if (view.isOpened) {
+              println("Start Initializing")
+              val selected = view.tree.text
+              val tree@TreeView(isOpened, el) = treeState.items(selected)
+
+              // reset other 'opened' state to false
+              val other = inside.treeViewState.items.filter(_._1 != selected)
+              /*.map(p => (p._1, p._2.copy(isOpened = false)))*/
+              val updatedItems = (treeState.items ++ other) + (selected -> tree)
+
+              println("Generate LIST at initialization")
+              val lis = generateLI(updatedItems(selected).tree.items, ref = selected)(Some(inside))
+              val updatedEl = treeState.els + (selected -> lis)
+              println("Update State at Initialization")
+              currState.copy(treeViewState = currState.treeViewState.copy(els = updatedEl))
+            }
+            else currState
+          }
+          updatedState.treeViewState
+        })
+      },
+
+      "Initializing ...")
+    case state@Execute(treeState) =>
       'div ('class /= "treeview",
         'ul ('class /= "list-group",
-          state.treeViewState.items.keys.flatMap { item =>
+          treeState.items.keys.flatMap { item =>
             // Create the root tree with/out child elements
-            createTree(Some(state.treeViewState.items(item).tree), None, true)(Some(state), {
-              createCheckbox(state.treeViewState.items, item)(parentCheckboxEvent _)
+            createTree(Some(treeState.items(item).tree), isTopLevelTree = true)(Some(state), {
+              createCheckbox(treeState.items, item)(parentCheckboxEvent _)
             }, {
               // check if the  selected item is used as a key for els in State
-              val elements = if (state.treeViewState.els.contains(item)) state.treeViewState.els(item) else Vector.empty
-              //if (state.treeViewState.els.filterKeys(_ == state.treeViewState.rootSelected).isEmpty) Vector.empty
-              //else
-              getChildrenEls(/*item == state.selected &&*/ state.treeViewState.items(item).isOpened)(elements)
+              val elements = if (treeState.els.contains(item)) treeState.els(item)
+              else Vector.empty
+              getChildrenEls(treeState.items(item).isOpened)(elements)
             })
           }
         )
