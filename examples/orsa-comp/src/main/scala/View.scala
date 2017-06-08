@@ -96,7 +96,6 @@ object View {
           case t: TreeItem => (t.text, c, t.items)
         }
       }.find { case (n, _, _) => n == names.head }
-      //filter { case (n, _, _) => n == names.head }.headOption
 
       // visit node by depth first
       if (result.isDefined) {
@@ -148,5 +147,14 @@ object View {
     // updated view
     compose(accumulated)
   }
+
+  /**
+    * The compound id will be used as a key for tree view state's
+    * alt (alternate tree hierarchy).
+    *
+    * @param ids - ids of all checked items
+    * @return
+    */
+  def generateCompoundId(ids: UUID*): UUID = ???
 
 }

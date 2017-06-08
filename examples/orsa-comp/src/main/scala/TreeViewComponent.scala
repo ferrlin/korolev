@@ -78,7 +78,7 @@ object TreeViewComponent {
   }
 
   def getChildrenEls(isSelected: Boolean)(els: Vector[VDom.Node]): Vector[VDom.Node] =
-    if ( /*isSelected && */ els.nonEmpty) els else Vector.empty[VDom.Node]
+    if (isSelected && els.nonEmpty) els else Vector.empty[VDom.Node]
 
   /**
     * Recursively updates the checkbox value.
@@ -224,24 +224,12 @@ class TreeViewComponent {
     */
   def createTree(item: Option[TreeItem], view: Option[ChildView] = None, isTopLevelTree: Boolean = false)(state: Option[State], checkbox: VDom.Node, childrenEls: Vector[VDom.Node]): Vector[VDom.Node] = {
 
-    //    val state = someState.map(s => if (s.isInstanceOf[Execute]) s.asInstanceOf[Execute] else s.asInstanceOf[Initialize])
-    val treeState: Option[TreeViewState] = state.map(_ match {
+    val treeState: Option[TreeViewState] = state.map(i => i match {
       case e: Execute => e.treeViewState
       case i: Initialize => i.treeViewState
     })
+
     val (isSelected, isOpened, text) = if (state.isDefined && item.isDefined && treeState.isDefined && treeState.get.items.contains(item.get.text)) {
-
-      //      val curr = state.get.treeViewState.items(item.get.text)
-      //      val updated = transition {
-      //        println(s"TRANSITION called");
-      //      TODO: fix
-      //      this
-      //        mainTreeEventHandler(curr.tree)
-      //      }(state.get)
-      //
-      //      val isEmpty = updated.treeViewState.els.isEmpty
-      //      if (!isEmpty) newChildrenEls = updated.treeViewState.els(curr.tree.text)
-
       val treeView = treeState.get.items(item.get.text)
       val isSelected = treeState.get.itemSelected.exists(_.equals(item.get.id))
       (isSelected, treeView.isOpened, item.get.text)
@@ -311,7 +299,7 @@ class TreeViewComponent {
     * @return
     */
   def parentCheckboxEvent(item: String): StateManager.Transition[State] = {
-    case s: Execute =>
+    case s@Execute(treeState) =>
       val TreeView(opened, ref) = s.treeViewState.items(item)
       val updatedStatus = !ref.checked
       val updatedChildren = ref.items.map {
@@ -322,7 +310,31 @@ class TreeViewComponent {
       }
       val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
       val updatedEl = s.treeViewState.els + (item -> generateLI(updatedTree.items, ref = ref.text)(Some(s)))
-      s.copy(treeViewState = s.treeViewState.copy(items = s.treeViewState.items + (item -> TreeView(opened, updatedTree)), els = updatedEl))
+      Initialize(treeViewState = s.treeViewState.copy(items = s.treeViewState.items + (item -> TreeView(opened, updatedTree)), els = updatedEl))
+  }
+
+
+  /**
+    * Stores alternate tree of items based on previously checked
+    * items.
+    *
+    * @param compoundId -  generated uuid from all checked items' id
+    * @return state - updated state with alternate items
+    */
+  def cascadeTreeChangeHandler(compoundId: UUID, treeState: TreeViewState): TreeViewState =
+    if (treeState.alt.contains(compoundId))
+      treeState.copy(items = treeState.items ++ treeState.alt(compoundId)) else treeState
+
+  /**
+    * Helper method to generate compound id
+    *
+    * @param ids - ids' of selected items
+    * @return uuid generate from all ids
+    */
+  def generateCompoundId(ids: UUID*): UUID = {
+    val bCompoundId: Array[Byte] = ids.fold("")((f, s) => f.toString.concat(s.toString)).toString.getBytes
+    // return the compound id as uuid
+    UUID.nameUUIDFromBytes(bCompoundId)
   }
 
   /**
@@ -335,7 +347,7 @@ class TreeViewComponent {
     */
   def childCheckboxEvent(ref: View)(name: String, isChecked: Boolean): StateManager.Transition[State] = {
     case i: Initialize => i
-    case s: Execute => {
+    case s: Execute =>
       val selected = ref match {
         case tv: TreeView => tv.tree.text
         case cv: ChildView => {
@@ -361,10 +373,8 @@ class TreeViewComponent {
         val updatedEls: Map[String, Vector[VDom.Node]] = s.treeViewState.els + (selected -> lis)
         (selected -> TreeView(opened, updatedParentRef), updatedEls)
       }
-
       // updated the state with the changes in checkbox value
-      s.copy(treeViewState = s.treeViewState.copy(items = s.treeViewState.items + treeMap, els = elements))
-    }
+      Initialize(treeViewState = s.treeViewState.copy(items = s.treeViewState.items + treeMap, els = elements))
   }
 
   /**
@@ -379,6 +389,7 @@ class TreeViewComponent {
     case i: Initialize => i
     case state: Execute =>
       require(ref.isDefined, "Reference should be defined.")
+
       //TODO: use the id instead of value text
       val (itemSelected, isChecked) = ref match {
         case Some(tv: TreeView) => (tv.tree.id, tv.tree.checked)
@@ -399,15 +410,14 @@ class TreeViewComponent {
           //parent
           val root = tv.tree.text
           val lis: Vector[VDom.Node] = generateLI(tv.tree.items, ref = root)(Some(updatedState))
-          /*val updatedEls: Map[String, Vector[VDom.Node]] =*/ state.treeViewState.els + (root -> lis)
+          state.treeViewState.els + (root -> lis)
         case Some(cv: ChildView) =>
           val root = cv.genealogy.head
           val (opened, updatedParentRef) = updatedDeeperItems(cv, state.treeViewState, root)
           val lis: Vector[VDom.Node] = generateLI(updatedParentRef.items, ref = root)(Some(updatedState))
-          /*val updatedEls: Map[String, Vector[VDom.Node]] = */ state.treeViewState.els + (root -> lis)
+          state.treeViewState.els + (root -> lis)
         case None => state.treeViewState.els
       }
-
       // set the updated elements to the state.
       updatedState.copy(treeViewState = updatedState.treeViewState.copy(els = elements))
   }
@@ -434,9 +444,18 @@ class TreeViewComponent {
     case inside@Initialize(treeState) => 'body (
       delay(100.millisecond) { case _ =>
         Execute({
-          val updatedState = treeState.items.values.foldLeft(inside) { (currState, view) =>
-            if (view.isOpened) onLoadHandler(view.tree)(currState) else currState
+          val temp = TreeViewState.getAllCheckedItems(treeState) map {
+            case ti: TreeItem => (ti.id, ti.text)
+            case li: LeafItem => (li.id, li.text)
           }
+          val gen = generateCompoundId(temp.toSeq.map(_._1): _*)
+          val updatedTreeState = cascadeTreeChangeHandler(gen, treeState)
+
+          val updatedState =
+            updatedTreeState.items.values.foldLeft(inside.copy(treeViewState = updatedTreeState)) {
+              (currState, view) =>
+                if (view.isOpened) onLoadHandler(view.tree)(currState) else currState
+            }
           // return the updated tree state
           updatedState.treeViewState
         })

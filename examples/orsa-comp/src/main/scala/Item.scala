@@ -40,7 +40,7 @@ object Item {
     * @param tv
     * @return
     */
-  def apply(n: Int, tv: Option[View] = None): Vector[ChildView] = {
+  def apply(n: Int, tv: Option[View] = None, ids: Seq[UUID] = Nil): Vector[ChildView] = {
     var nestedParent: Option[ChildView] = Option.empty[ChildView]
     val nested: Option[ChildView] = (1 to 5).toList.map { i =>
       nestedParent = Some(childTree(i, if (nestedParent.isDefined) nestedParent else tv))
@@ -62,7 +62,7 @@ object Item {
     (0 to n).toVector.map {
       l => {
         if (l < 2) {
-          val nestedItem = TreeItem(s"Nested Tree #$l")
+          val nestedItem = TreeItem(text = s"Nested Tree #$l")
           val nestedTree = ChildView(item = nestedItem, parent = tv)
 
           val childrenViews = (0 to 2).toVector.map { i =>

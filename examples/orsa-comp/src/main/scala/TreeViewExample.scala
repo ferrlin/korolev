@@ -47,7 +47,7 @@ object Init {
   val secondName = "Tree2"
   val thirdName = "Tree3"
 
-  val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty)
+  val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty, id = java.util.UUID.fromString("57eeb9b7-e693-3b71-8f81-bc275b37ccc4"))
   val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
   val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
 
@@ -55,9 +55,12 @@ object Init {
   val tv02: TreeView = TreeView(true, ti02)
   val tv03: TreeView = TreeView(true, ti03)
   //
-  val children01 = Item(3, Some(tv01))
+  val children01 = Item(3, Some(tv01), ids = Seq(java.util.UUID.fromString("04e67768-7958-4af5-bb1c-fbc358849709")))
   val children02 = Item(7, Some(tv02))
   val children03 = Item(10, Some(tv03))
+
+
+  val altChildren02 = Item(1, Some(tv02))
 
   /*
     val d01 = childTree(1, Some(tv01))
@@ -101,13 +104,17 @@ object Init {
   val utv02: TreeView = tv02.copy(tree = ti02.copy(items = children02))
   val utv03: TreeView = tv03.copy(tree = ti03.copy(items = children03))
 
+  val demoId = java.util.UUID.fromString("112a59be-79ff-3d91-9b84-d3bf6dca6939") //expects a compound id of
   // The default state for the tree view component.
   val default =
-    TreeViewState(/*utv01.tree.text,*/
-      itemSelected = None,
-      items = Map(
-        utv01.tree.text -> utv01,
-        utv02.tree.text -> utv02,
-        utv03.tree.text -> utv03),
-      els = Map.empty)
+  TreeViewState(
+    itemSelected = None,
+    alt = Map(
+      demoId -> Map(utv02.tree.text -> TreeView(isOpened = true,
+        tree = ti02.copy(items = altChildren02)))), // for new feature
+    items = Map(
+      utv01.tree.text -> utv01,
+      utv02.tree.text -> utv02,
+      utv03.tree.text -> utv03),
+    els = Map.empty)
 }
