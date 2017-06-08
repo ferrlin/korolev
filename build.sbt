@@ -58,7 +58,11 @@ val commonSettings = publishSettings ++ Seq(
 )
 
 val exampleSettings = commonSettings ++ dontPublishSettings ++ Seq(
-  libraryDependencies += "org.slf4j" % "slf4j-simple" % "1.7.+"
+  libraryDependencies ++= Seq(
+    "org.slf4j" % "slf4j-simple" % "1.7.+",
+    "com.github.kenbot" %% "goggles-dsl" % "1.0",
+    "com.github.kenbot" %% "goggles-macros" % "1.0"),
+  scalacOptions += "-Yrangepos"
 )
 
 lazy val vdomOsgiSettings = osgiSettings ++ Seq(
