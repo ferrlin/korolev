@@ -299,7 +299,7 @@ class TreeViewComponent {
     * @return
     */
   def parentCheckboxEvent(item: String): StateManager.Transition[State] = {
-    case s@Execute(treeState) =>
+    case s: Execute =>
       val TreeView(opened, ref) = s.treeViewState.items(item)
       val updatedStatus = !ref.checked
       val updatedChildren = ref.items.map {
@@ -310,7 +310,10 @@ class TreeViewComponent {
       }
       val updatedTree = ref.copy(checked = updatedStatus, items = updatedChildren)
       val updatedEl = s.treeViewState.els + (item -> generateLI(updatedTree.items, ref = ref.text)(Some(s)))
-      Initialize(treeViewState = s.treeViewState.copy(items = s.treeViewState.items + (item -> TreeView(opened, updatedTree)), els = updatedEl))
+      val treeState = s.treeViewState.copy(items = s.treeViewState.items + (item -> TreeView(opened, updatedTree)), els = updatedEl)
+
+      //
+      dispatchStateBasedOnCheckedItem(treeState)
   }
 
 
@@ -373,8 +376,31 @@ class TreeViewComponent {
         val updatedEls: Map[String, Vector[VDom.Node]] = s.treeViewState.els + (selected -> lis)
         (selected -> TreeView(opened, updatedParentRef), updatedEls)
       }
-      // updated the state with the changes in checkbox value
-      Initialize(treeViewState = s.treeViewState.copy(items = s.treeViewState.items + treeMap, els = elements))
+
+      val applied = s.treeViewState.items + treeMap
+      val treeState = s.treeViewState.copy(items = applied, els = elements)
+
+      //
+      dispatchStateBasedOnCheckedItem(treeState)
+  }
+
+  /**
+    * This is used for rendering tree that depends on
+    * the input (ie checked items) from master tree.
+    *
+    * @param treeState - tree view component state
+    * @return - returned either Intialize or simply Execute the treeState
+    */
+  private def dispatchStateBasedOnCheckedItem(treeState: TreeViewState): State = {
+    val temp = TreeViewState.getAllCheckedItems(treeState) map {
+      case ti: TreeItem => (ti.id, ti.text)
+      case li: LeafItem => (li.id, li.text)
+    }
+
+    val generated = generateCompoundId(temp.toSeq.map(_._1): _*)
+
+    if (treeState.alt.contains(generated)) Initialize(treeViewState = treeState)
+    else Execute(treeViewState = treeState)
   }
 
   /**
@@ -422,6 +448,13 @@ class TreeViewComponent {
       updatedState.copy(treeViewState = updatedState.treeViewState.copy(els = elements))
   }
 
+  /**
+    * Handler method for constructing component on load based
+    * on parameter settings
+    *
+    * @param item - item that needs to be handled on component load
+    * @return
+    */
   def onLoadHandler(item: TreeItem): StateManager.Transition[Initialize] = {
     case inside =>
       val selected = item.text
@@ -436,7 +469,7 @@ class TreeViewComponent {
   }
 
   /**
-    * Render the component to it's Virtual DOM  Node instance.
+    * Render the component to it's Virtual DOM Node instance.
     *
     * @return
     */
@@ -451,16 +484,12 @@ class TreeViewComponent {
           val gen = generateCompoundId(temp.toSeq.map(_._1): _*)
           val updatedTreeState = cascadeTreeChangeHandler(gen, treeState)
 
-          val updatedState =
-            updatedTreeState.items.values.foldLeft(inside.copy(treeViewState = updatedTreeState)) {
-              (currState, view) =>
-                if (view.isOpened) onLoadHandler(view.tree)(currState) else currState
-            }
-          // return the updated tree state
-          updatedState.treeViewState
+          updatedTreeState.items.values.foldLeft(inside.copy(treeViewState = updatedTreeState)) { (currState, view) =>
+            if (view.isOpened) onLoadHandler(view.tree)(currState)
+            else currState
+          }.treeViewState
         })
-      },
-      INITIAL_MESSAGE)
+      }, INITIAL_MESSAGE)
     case state@Execute(treeState) =>
       'div ('class /= "treeview",
         'ul ('class /= "list-group",

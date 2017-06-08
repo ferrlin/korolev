@@ -30,7 +30,6 @@ object TreeViewState {
 
   def apply(): TreeViewState = TreeViewState()
 
-
   /**
     *
     * Convenience method to retrieve all
