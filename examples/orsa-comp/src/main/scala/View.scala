@@ -1,8 +1,7 @@
 import java.util.UUID
-
 import Item.{Item, LeafItem, TreeItem}
-
 import scala.annotation.tailrec
+import goggles._
 
 object View {
 

@@ -31,8 +31,7 @@ object TreeViewExample extends KorolevBlazeServer {
     render = {
       case state =>
         'body (
-          // Generates the Virtual Node DOM for tree component with
-          // state as the input
+          // Generates the Virtual Node DOM for tree component with state as the input
           TreeViewComponent(state)
         )
     }, serverRouter = ServerRouter.empty
@@ -40,7 +39,6 @@ object TreeViewExample extends KorolevBlazeServer {
 }
 
 object Init {
-
 
   // sample test instances
   val defaultName = "Tree1"
@@ -50,6 +48,7 @@ object Init {
   val ti01: TreeItem = TreeItem(defaultName, checked = false, Vector.empty, id = java.util.UUID.fromString("57eeb9b7-e693-3b71-8f81-bc275b37ccc4"))
   val ti02: TreeItem = TreeItem(secondName, checked = false, Vector.empty)
   val ti03: TreeItem = TreeItem(thirdName, checked = false, Vector.empty)
+
 
   val tv01: TreeView = TreeView(true, ti01)
   val tv02: TreeView = TreeView(true, ti02)
@@ -100,6 +99,10 @@ object Init {
     })
   */
   // added children to tree items
+
+  //  val uti01 = set"$ti01.$items" := children01
+
+  //  val utv01 = set"$tv01.$tree" := ti01
   val utv01: TreeView = tv01.copy(tree = ti01.copy(items = children01 /*:+ fd01*/))
   val utv02: TreeView = tv02.copy(tree = ti02.copy(items = children02))
   val utv03: TreeView = tv03.copy(tree = ti03.copy(items = children03))

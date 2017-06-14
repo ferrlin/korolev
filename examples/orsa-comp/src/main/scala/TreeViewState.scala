@@ -5,6 +5,7 @@ import View.{ChildView, TreeView, View}
 import korolev.{Effects, VDom}
 import korolev.execution.{defaultExecutor, defaultScheduler}
 
+import goggles._
 import scala.concurrent.Future
 
 /**
